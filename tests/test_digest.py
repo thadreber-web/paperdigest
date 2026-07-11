@@ -96,3 +96,24 @@ def test_call_json_raises_after_failed_repair():
     backend = FakeBackend(["nope", "still nope"])
     with pytest.raises(LLMError, match="unparseable JSON"):
         _call_json(backend, "sys", "user")
+
+
+def test_invalid_level_raises_value_error(paper):
+    backend = FakeBackend([])
+    with pytest.raises(ValueError, match="level must be one of"):
+        build_digest(paper, backend, "expert", set(), 400_000, progress=lambda m: None)
+
+
+def test_concept_missing_title_raises_llmerror(paper):
+    bad_outline = json.dumps(
+        {
+            "tldr": "t",
+            "why_it_matters": "w",
+            "concepts": [{"section": "1 Introduction"}],
+            "jargon": [],
+            "self_test": [],
+        }
+    )
+    backend = FakeBackend([bad_outline])
+    with pytest.raises(LLMError, match="missing 'title'"):
+        build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None)

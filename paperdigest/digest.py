@@ -125,6 +125,8 @@ def build_digest(
     max_chars: int,
     progress: Callable[[str], None] = _default_progress,
 ) -> Digest:
+    if level not in LEVEL_GUIDANCE:
+        raise ValueError(f"level must be one of {tuple(LEVEL_GUIDANCE)}, got {level!r}")
     guidance = LEVEL_GUIDANCE[level]
     body = _paper_body(paper, max_chars, progress)
 
@@ -142,6 +144,8 @@ def build_digest(
     concepts: list[ConceptNote] = []
     total = len(outline["concepts"])
     for i, c in enumerate(outline["concepts"], 1):
+        if "title" not in c:
+            raise LLMError(f"outline concept entry is missing 'title': {c!r}")
         title = c["title"]
         section = c.get("section", "")
         progress(f"Explaining concept {i}/{total}: {title}")
