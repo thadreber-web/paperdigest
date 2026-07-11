@@ -43,6 +43,7 @@ def main(
         html = fetch.fetch_html(arxiv_id, cfg.cache_dir)
         paper = extract.extract_paper(html, arxiv_id)
         _progress(f"Extracted '{paper.title}' ({len(paper.sections)} sections)")
+        render.check_output_free(render.paper_folder(arxiv_id, paper.title, cfg.vault), force)
         llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url)
         gdir = cfg.vault / "Glossary"
         existing_terms = {p.stem.lower() for p in gdir.glob("*.md")} if gdir.exists() else set()

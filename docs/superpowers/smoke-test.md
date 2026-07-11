@@ -51,11 +51,13 @@ error: /tmp/smoke-vault/Papers/2017-attention-is-all-you-need already exists —
 On the re-run, only 10 glossary terms were sent to the LLM (existing term
 notes were correctly excluded from definition requests).
 
-## Observations (not fixed; noted for later)
+## Observations (noted for later)
 
-- The existing-folder check happens at render time, so a blocked re-run still
-  spends the full set of LLM calls before failing. Checking earlier would
-  save tokens/time.
+- ~~The existing-folder check happens at render time, so a blocked re-run
+  still spends the full set of LLM calls before failing.~~ Fixed same day:
+  the CLI now checks right after extraction, before the backend is
+  constructed. Live re-run without `--force` fails in 0.14s with no LLM
+  calls (was: full outline + concepts + glossary round trips).
 - Concept outputs from the model can repeat the note title as a second `#`
   heading under the rendered one (cosmetic).
 - Small models fail honestly: `qwen2.5:3b` via a CPU-only, 4096-context

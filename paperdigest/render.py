@@ -36,14 +36,22 @@ def _frontmatter(digest: Digest, extra_tags: str = "") -> str:
     )
 
 
+def paper_folder(arxiv_id: str, title: str, vault: Path) -> Path:
+    year = "20" + arxiv_id[:2]
+    return vault / "Papers" / f"{year}-{slugify(title)}"
+
+
+def check_output_free(folder: Path, force: bool) -> None:
+    if folder.exists() and not force:
+        raise OutputExistsError(
+            f"{folder} already exists — re-run with --force to overwrite (your edits there will be lost)"
+        )
+
+
 def render_digest(digest: Digest, vault: Path, force: bool = False) -> Path:
-    year = "20" + digest.paper.arxiv_id[:2]
-    folder = vault / "Papers" / f"{year}-{slugify(digest.paper.title)}"
+    folder = paper_folder(digest.paper.arxiv_id, digest.paper.title, vault)
+    check_output_free(folder, force)
     if folder.exists():
-        if not force:
-            raise OutputExistsError(
-                f"{folder} already exists — re-run with --force to overwrite (your edits there will be lost)"
-            )
         shutil.rmtree(folder)
     folder.mkdir(parents=True)
 

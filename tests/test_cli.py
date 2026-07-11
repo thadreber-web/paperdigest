@@ -47,6 +47,20 @@ def test_rerun_refuses_without_force(tmp_path, monkeypatch, fixture_html):
     assert "--force" in result.output
 
 
+def test_rerun_guard_fires_before_llm_calls(tmp_path, monkeypatch, fixture_html):
+    _patch(monkeypatch, fixture_html)
+    assert runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path)]).exit_code == 0
+
+    def boom(*a, **k):
+        raise AssertionError("LLM backend should not be constructed when output exists")
+
+    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None: fixture_html)
+    monkeypatch.setattr(cli, "make_backend", boom)
+    result = runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "--force" in result.output
+
+
 def test_rerun_with_force_succeeds(tmp_path, monkeypatch, fixture_html):
     _patch(monkeypatch, fixture_html)
     assert runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path)]).exit_code == 0
