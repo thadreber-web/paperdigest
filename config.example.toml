@@ -1,0 +1,9 @@
+# Copy to config.toml and adjust. API keys come from env vars only:
+#   ANTHROPIC_API_KEY, OPENAI_API_KEY
+
+backend = "anthropic"          # "anthropic" or "openai" (openai also covers local servers)
+model = "claude-sonnet-5"
+# base_url = "http://localhost:11434/v1"   # for local Ollama/vLLM, with backend = "openai"
+vault = "/vault"               # your Obsidian vault root
+level = "intermediate"         # beginner | intermediate | advanced
+# max_input_chars = 24000      # lower for small-context local models
