@@ -21,9 +21,9 @@ def _progress(msg: str) -> None:
 def main(
     ref: str = typer.Argument(..., help="arXiv URL or ID, e.g. https://arxiv.org/abs/1706.03762"),
     level: str = typer.Option(None, "--level", help="beginner | intermediate | advanced"),
-    backend: str = typer.Option(None, "--backend", help="anthropic | openai (openai also covers local servers)"),
+    backend: str = typer.Option(None, "--backend", help="local (default) | anthropic | openai"),
     model: str = typer.Option(None, "--model"),
-    base_url: str = typer.Option(None, "--base-url", help="OpenAI-compatible server URL, e.g. http://localhost:11434/v1"),
+    base_url: str = typer.Option(None, "--base-url", help="local server URL (default http://localhost:8080/v1)"),
     vault: Path = typer.Option(None, "--vault", help="Obsidian vault root (notes go to Papers/ and Glossary/)"),
     config: Path = typer.Option(Path("config.toml"), "--config"),
     force: bool = typer.Option(False, "--force", help="overwrite an existing paper folder"),

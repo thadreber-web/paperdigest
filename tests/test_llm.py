@@ -34,6 +34,16 @@ def test_local_server_needs_no_key(monkeypatch):
     assert backend.model == "llama3.1"
 
 
+def test_local_backend_needs_no_key_and_defaults_base_url(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    backend = make_backend("local", "local")
+    assert isinstance(backend, OpenAICompatibleBackend)
+    assert backend.base_url == "http://localhost:8080/v1"
+    custom = make_backend("local", "qwen35-9b", base_url="http://localhost:8001/v1")
+    assert custom.base_url == "http://localhost:8001/v1"
+
+
 def test_backend_selection(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     assert isinstance(make_backend("anthropic", "m"), AnthropicBackend)

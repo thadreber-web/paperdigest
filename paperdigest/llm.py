@@ -9,6 +9,9 @@ class LLMError(Exception):
     pass
 
 
+LOCAL_BASE_URL = "http://localhost:8080/v1"  # llama.cpp server default
+
+
 class Backend(Protocol):
     model: str
 
@@ -42,6 +45,7 @@ class OpenAICompatibleBackend:
         import openai
 
         self.model = model
+        self.base_url = base_url
         self._client = openai.OpenAI(base_url=base_url, api_key=api_key or "not-needed")
 
     def complete(self, system: str, user: str) -> str:
@@ -56,6 +60,8 @@ class OpenAICompatibleBackend:
 
 
 def make_backend(backend: str, model: str, base_url: str | None = None) -> Backend:
+    if backend == "local":
+        return OpenAICompatibleBackend(model, base_url or LOCAL_BASE_URL)
     if backend == "anthropic":
         return AnthropicBackend(model)
     if backend == "openai":

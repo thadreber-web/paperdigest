@@ -5,12 +5,19 @@ import pytest
 from paperdigest.config import Config, load_config
 
 
-def test_defaults():
+def test_defaults_are_local_first():
     cfg = load_config(None)
-    assert cfg.backend == "anthropic"
+    assert cfg.backend == "local"
+    assert cfg.model == "local"
     assert cfg.level == "intermediate"
     assert cfg.vault == Path("/vault")
     assert cfg.base_url is None
+
+
+def test_model_defaults_follow_backend():
+    assert load_config(None, backend="anthropic").model == "claude-sonnet-5"
+    assert load_config(None, backend="openai").model == "gpt-5"
+    assert load_config(None, backend="anthropic", model="claude-haiku-4-5").model == "claude-haiku-4-5"
 
 
 def test_toml_file_overrides_defaults(tmp_path):
@@ -27,7 +34,7 @@ def test_kwargs_override_toml_and_none_is_ignored(tmp_path):
     f.write_text('level = "beginner"\n')
     cfg = load_config(f, level="advanced", backend=None)
     assert cfg.level == "advanced"
-    assert cfg.backend == "anthropic"
+    assert cfg.backend == "local"
 
 
 def test_invalid_level_raises():
