@@ -107,3 +107,65 @@ def test_module_filenames_are_stripped_to_basenames():
     backend = FakeBackend([ANALYZE, evil_plan, MODULE_PY, SMOKE_TEST])
     stubs = scaffold._build_stub_files(make_paper(), backend, "tiny_transformers_explained", max_chars=100_000, progress=lambda m: None)
     assert "src/tiny_transformers_explained/model.py" in stubs
+
+
+TRAIN_PY = (
+    "import argparse\n"
+    "from tiny_transformers_explained.tracking import log_run\n\n\n"
+    "def main():\n"
+    "    parser = argparse.ArgumentParser()\n"
+    "    parser.add_argument('--config', required=True)\n"
+    "    args = parser.parse_args()\n"
+    "    log_run({'config': args.config}, {'loss': 0.0})\n\n\n"
+    "if __name__ == '__main__':\n"
+    "    main()\n"
+)
+HARNESS = json.dumps(
+    {
+        "train_py": TRAIN_PY,
+        "evaluate_py": TRAIN_PY,
+        "base_yaml": "lr: 0.001",
+        "smoke_yaml": "epochs: 1",
+        "smoke_readme": "# Smoke run\nRun: python train.py --config configs/smoke.yaml",
+    }
+)
+DOCS = json.dumps({"readme": "# Tiny Transformers", "experiments_md": "# Experiments\n- [ ] main"})
+
+
+def full_responses():
+    return [ANALYZE, PLAN, MODULE_PY, SMOKE_TEST, HARNESS, DOCS]
+
+
+def test_build_scaffold_produces_all_files():
+    backend = FakeBackend(full_responses())
+    project = scaffold.build_scaffold(make_paper(), backend, max_chars=100_000, progress=lambda m: None)
+    assert project.package == "tiny_transformers_explained"
+    assert project.model == "fake-model"
+    assert set(project.files) == {
+        "src/tiny_transformers_explained/model.py",
+        "tests/test_smoke.py",
+        "train.py",
+        "evaluate.py",
+        "configs/base.yaml",
+        "configs/smoke.yaml",
+        "experiments/exp001_smoke/README.md",
+        "README.md",
+        "EXPERIMENTS.md",
+    }
+    assert "TODO(paper" in project.files["src/tiny_transformers_explained/model.py"]
+
+
+def test_build_scaffold_rejects_unparseable_harness():
+    bad_harness = json.dumps(
+        {
+            "train_py": "def broken(:",
+            "evaluate_py": TRAIN_PY,
+            "base_yaml": "lr: 0.001",
+            "smoke_yaml": "epochs: 1",
+            "smoke_readme": "# Smoke",
+        }
+    )
+    backend = FakeBackend([ANALYZE, PLAN, MODULE_PY, SMOKE_TEST, bad_harness])
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold.build_scaffold(make_paper(), backend, max_chars=100_000, progress=lambda m: None)
+    assert exc.value.stage == "harness"
