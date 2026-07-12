@@ -18,9 +18,11 @@ class FakeBackend:
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls = []
+        self.json_modes = []
 
-    def complete(self, system: str, user: str) -> str:
+    def complete(self, system: str, user: str, json_mode: bool = False) -> str:
         self.calls.append((system, user))
+        self.json_modes.append(json_mode)
         if not self.responses:
             raise AssertionError("FakeBackend ran out of responses")
         return self.responses.pop(0)

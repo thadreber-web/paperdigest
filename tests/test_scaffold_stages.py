@@ -169,3 +169,21 @@ def test_build_scaffold_rejects_unparseable_harness():
     with pytest.raises(scaffold.ScaffoldError) as exc:
         scaffold.build_scaffold(make_paper(), backend, max_chars=100_000, progress=lambda m: None)
     assert exc.value.stage == "harness"
+
+
+def test_stage_json_tolerates_trailing_junk():
+    backend = FakeBackend([ANALYZE + "`"])
+    data = scaffold._stage_json(backend, "analyze", "sys", "user", required=("components",))
+    assert data["datasets"] == ["toy-corpus"]
+
+
+def test_stage_json_requests_json_mode():
+    backend = FakeBackend([ANALYZE])
+    scaffold._stage_json(backend, "analyze", "sys", "user", required=("components",))
+    assert backend.json_modes == [True]
+
+
+def test_stage_python_does_not_use_json_mode():
+    backend = FakeBackend([MODULE_PY])
+    scaffold._stage_python(backend, "module:model.py", "sys", "user")
+    assert backend.json_modes == [False]

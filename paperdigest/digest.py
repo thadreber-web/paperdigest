@@ -77,11 +77,11 @@ def _default_progress(msg: str) -> None:
 
 
 def _call_json(backend: Backend, system: str, user: str) -> dict:
-    raw = complete_with_retry(backend, system, user)
+    raw = complete_with_retry(backend, system, user, json_mode=True)
     try:
         return json.loads(strip_fences(raw))
     except json.JSONDecodeError:
-        repaired = complete_with_retry(backend, _REPAIR_SYSTEM, raw)
+        repaired = complete_with_retry(backend, _REPAIR_SYSTEM, raw, json_mode=True)
         try:
             return json.loads(strip_fences(repaired))
         except json.JSONDecodeError as e:

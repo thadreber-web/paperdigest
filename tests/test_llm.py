@@ -57,7 +57,7 @@ class _Flaky:
     def __init__(self, fail_times):
         self.remaining_failures = fail_times
 
-    def complete(self, system, user):
+    def complete(self, system, user, json_mode=False):
         if self.remaining_failures > 0:
             self.remaining_failures -= 1
             raise RuntimeError("transient")
@@ -82,3 +82,64 @@ def test_strip_fences_removes_markdown_fences():
 
 def test_strip_fences_passes_plain_text_through():
     assert strip_fences('  {"a": 1}\n') == '{"a": 1}'
+
+
+from types import SimpleNamespace
+
+import httpx
+
+from conftest import FakeBackend
+from paperdigest.llm import OpenAICompatibleBackend
+
+
+def test_complete_with_retry_passes_json_mode():
+    backend = FakeBackend(["{}"])
+    complete_with_retry(backend, "s", "u", json_mode=True)
+    assert backend.json_modes == [True]
+
+
+class _StubCompletions:
+    def __init__(self, reject_response_format=False):
+        self.kwargs_seen = []
+        self.reject_response_format = reject_response_format
+
+    def create(self, **kwargs):
+        self.kwargs_seen.append(kwargs)
+        if self.reject_response_format and "response_format" in kwargs:
+            import openai
+
+            req = httpx.Request("POST", "http://localhost/v1")
+            raise openai.BadRequestError(
+                "response_format unsupported", response=httpx.Response(400, request=req), body=None
+            )
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))])
+
+
+def _openai_backend(stub):
+    backend = OpenAICompatibleBackend("m", base_url="http://localhost:9999/v1")
+    backend._client = SimpleNamespace(chat=SimpleNamespace(completions=stub))
+    return backend
+
+
+def test_openai_backend_requests_json_object_when_json_mode():
+    stub = _StubCompletions()
+    backend = _openai_backend(stub)
+    assert backend.complete("s", "u", json_mode=True) == "ok"
+    assert stub.kwargs_seen[0]["response_format"] == {"type": "json_object"}
+
+
+def test_openai_backend_omits_response_format_by_default():
+    stub = _StubCompletions()
+    backend = _openai_backend(stub)
+    backend.complete("s", "u")
+    assert "response_format" not in stub.kwargs_seen[0]
+
+
+def test_openai_backend_falls_back_when_server_rejects_response_format():
+    stub = _StubCompletions(reject_response_format=True)
+    backend = _openai_backend(stub)
+    assert backend.complete("s", "u", json_mode=True) == "ok"
+    assert "response_format" not in stub.kwargs_seen[-1]
+    backend.complete("s", "u", json_mode=True)  # sticky: no second rejection round-trip
+    assert len(stub.kwargs_seen) == 3
+    assert "response_format" not in stub.kwargs_seen[-1]

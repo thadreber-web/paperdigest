@@ -119,11 +119,15 @@ def project_folder(arxiv_id: str, title: str, dest: Path) -> Path:
 
 def _stage_json(backend: Backend, stage: str, system: str, user: str, required: tuple[str, ...]) -> dict:
     try:
-        raw = complete_with_retry(backend, system, user)
+        # complete_with_retry only retries transport/SDK errors; bad *content* still
+        # fails this stage immediately (the spec's no-retry rule is about content).
+        raw = complete_with_retry(backend, system, user, json_mode=True)
     except LLMError as e:
         raise ScaffoldError(stage, str(e)) from e
     try:
-        data = json.loads(strip_fences(raw))
+        # raw_decode reads the first complete JSON value and ignores trailing junk
+        # (small local models sometimes leak a stray fence character after the JSON)
+        data, _ = json.JSONDecoder().raw_decode(strip_fences(raw))
     except json.JSONDecodeError as e:
         raise ScaffoldError(stage, f"model returned invalid JSON: {e}", raw=raw) from e
     if not isinstance(data, dict):
