@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 from dataclasses import dataclass
 from typing import Callable
 
 from .extract import Paper
-from .llm import Backend, LLMError, complete_with_retry
+from .llm import Backend, LLMError, complete_with_retry, strip_fences
 
 
 @dataclass
@@ -77,22 +76,14 @@ def _default_progress(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def _strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n", "", text)
-        text = re.sub(r"\n```$", "", text)
-    return text
-
-
 def _call_json(backend: Backend, system: str, user: str) -> dict:
     raw = complete_with_retry(backend, system, user)
     try:
-        return json.loads(_strip_fences(raw))
+        return json.loads(strip_fences(raw))
     except json.JSONDecodeError:
         repaired = complete_with_retry(backend, _REPAIR_SYSTEM, raw)
         try:
-            return json.loads(_strip_fences(repaired))
+            return json.loads(strip_fences(repaired))
         except json.JSONDecodeError as e:
             raise LLMError(f"model returned unparseable JSON even after a repair attempt: {e}\n---\n{raw[:2000]}") from e
 

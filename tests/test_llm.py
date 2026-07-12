@@ -71,3 +71,14 @@ def test_retry_recovers():
 def test_retry_exhausted_raises_llmerror():
     with pytest.raises(LLMError, match="after 3 attempts"):
         complete_with_retry(_Flaky(99), "s", "u", retries=2)
+
+
+from paperdigest.llm import strip_fences
+
+
+def test_strip_fences_removes_markdown_fences():
+    assert strip_fences('```json\n{"a": 1}\n```') == '{"a": 1}'
+
+
+def test_strip_fences_passes_plain_text_through():
+    assert strip_fences('  {"a": 1}\n') == '{"a": 1}'

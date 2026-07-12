@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Protocol
 
@@ -10,6 +11,14 @@ class LLMError(Exception):
 
 
 LOCAL_BASE_URL = "http://localhost:8080/v1"  # llama.cpp server default
+
+
+def strip_fences(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n", "", text)
+        text = re.sub(r"\n```$", "", text)
+    return text
 
 
 class Backend(Protocol):
