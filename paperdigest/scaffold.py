@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import ast
 import json
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from . import templates
 from .digest import _paper_body
 from .extract import Paper
 from .llm import Backend, LLMError, complete_with_retry, strip_fences
-from .render import slugify
+from .render import OutputExistsError, slugify
 
 
 class ScaffoldError(Exception):
@@ -243,3 +246,51 @@ def build_scaffold(paper: Paper, backend: Backend, max_chars: int,
         arxiv_id=paper.arxiv_id, title=paper.title, url=paper.url,
         package=pkg, model=backend.model, files=files,
     )
+
+
+def _git_init(folder: Path, arxiv_id: str, progress: Callable[[str], None]) -> None:
+    git = shutil.which("git")
+    if git is None:
+        progress("WARNING: git not found — skipping git init (project kept without version control)")
+        return
+    try:
+        subprocess.run([git, "init", "-q"], cwd=folder, check=True)
+        subprocess.run([git, "add", "-A"], cwd=folder, check=True)
+        subprocess.run(
+            [git, "-c", "user.name=paperdigest", "-c", "user.email=paperdigest@localhost",
+             "commit", "-q", "-m", f"Scaffold generated from arXiv:{arxiv_id} by paperdigest"],
+            cwd=folder, check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        progress(f"WARNING: git init failed ({e}) — project kept without version control")
+
+
+def write_project(project: ScaffoldProject, folder: Path, force: bool,
+                  progress: Callable[[str], None] = _default_progress) -> Path:
+    if folder.exists():
+        if not force:
+            raise OutputExistsError(
+                f"{folder} already exists — re-run with --force to overwrite (your edits there will be lost)"
+            )
+        shutil.rmtree(folder)
+    try:
+        for d in templates.STATIC_DIRS:
+            (folder / d).mkdir(parents=True)
+            (folder / d / ".gitkeep").touch()
+        (folder / "experiments").mkdir()
+        (folder / "experiments" / "runs.jsonl").touch()
+        pkg_dir = folder / "src" / project.package
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "__init__.py").write_text("")
+        (pkg_dir / "tracking.py").write_text(templates.TRACKING_PY)
+        (folder / ".gitignore").write_text(templates.GITIGNORE)
+        (folder / "pyproject.toml").write_text(templates.PYPROJECT.format(name=project.package))
+        for rel, content in project.files.items():
+            path = folder / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content if content.endswith("\n") else content + "\n")
+    except Exception:
+        shutil.rmtree(folder, ignore_errors=True)  # never leave a half-project
+        raise
+    _git_init(folder, project.arxiv_id, progress)
+    return folder
