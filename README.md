@@ -37,6 +37,22 @@ Output lands in `<vault>/Papers/<year>-<title-slug>/` plus new term notes in
 `<vault>/Glossary/`. Re-running the same paper refuses to overwrite unless you
 pass `--force`. Glossary term notes are never overwritten.
 
+## Scaffold a research project
+
+Turn a paper into a standalone, git-initialized project skeleton (Cookiecutter-DS-style
+layout, JSONL experiment tracking, stub modules mapped to paper sections):
+
+```bash
+.venv/bin/paperdigest scaffold https://arxiv.org/abs/1706.03762 --dest ~/projects
+```
+
+Output lands in `<dest>/<year>-<title-slug>/` with its own git history. The code is a
+*skeleton*: module stubs with `TODO(paper §x.y)` markers plus a complete train/evaluate
+harness and a toy smoke experiment — not a working reimplementation. Any generation
+failure aborts loudly (nothing half-written); the raw model output is saved to
+`scaffold-debug-<stage>.txt` for inspection. Re-running refuses to overwrite an
+existing project unless you pass `--force`.
+
 ## Cloud backends (optional, cost money)
 
 | Backend | Flags | Key (env var only) |
