@@ -1,8 +1,22 @@
 [project]
 name = "paperdigest"
 version = "0.1.0"
-description = "Turn AI/ML papers into plain-English Obsidian notes"
+description = "Turn AI/ML papers into plain-English Obsidian notes and reproduction-ready project scaffolds — local-first, runs on a 9B model"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Thad Reber" }]
 requires-python = ">=3.11"
+keywords = ["arxiv", "papers", "obsidian", "llm", "local-llm", "llama-cpp", "research"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+urls = { Repository = "https://github.com/thadreber-web/paperdigest" }
 dependencies = [
     "typer>=0.12",
     "httpx>=0.27",

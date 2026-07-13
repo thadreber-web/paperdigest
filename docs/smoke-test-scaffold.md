@@ -1,15 +1,15 @@
 # Live smoke test — scaffold subcommand — 2026-07-12
 
-**Host:** spark-8802 (NVIDIA GB10). **Server:** local llama.cpp server on
+**Host:** a DGX Spark workstation (NVIDIA GB10). **Server:** local llama.cpp server on
 `http://localhost:8001/v1` serving
-`~/models/Qwythos-9B-v2-NVFP4/Qwythos-9B-v2-MTP-NVFP4.gguf` (confirmed via
+`Qwythos-9B-v2-MTP-NVFP4.gguf` (confirmed via
 `curl -s http://localhost:8001/v1/models` before the run). No hosted API keys
 were used; no model server was started for this test.
 
 ## Command
 
 ```bash
-.venv/bin/paperdigest scaffold 1706.03762 --dest /tmp/claude-scaffold-smoke --base-url http://localhost:8001/v1
+.venv/bin/paperdigest scaffold 1706.03762 --dest /tmp/scaffold-smoke --base-url http://localhost:8001/v1
 ```
 
 Wall-clock: ~1m26s (16:42:10 UTC to 16:43:36 UTC). Exit code: 1.
@@ -18,7 +18,7 @@ Wall-clock: ~1m26s (16:42:10 UTC to 16:43:36 UTC). Exit code: 1.
 
 The run reached Stage 2/5 ("planning modules") and then failed with a loud
 ERROR banner — a valid, recordable outcome per the design (no auto-fallback).
-Nothing was written to the destination directory; `/tmp/claude-scaffold-smoke`
+Nothing was written to the destination directory; `/tmp/scaffold-smoke`
 does not exist after the run.
 
 stderr (verbatim):
@@ -34,7 +34,7 @@ ERROR: scaffold stage failed — aborting, nothing was written
   model:  qwen35-9b
   server: http://localhost:8001/v1
   cause:  model returned invalid JSON: Extra data: line 1 column 1633 (char 1632)
-  raw model output saved to: ~/code/paperdigest/scaffold-debug-plan.txt
+  raw model output saved to: <repo>/scaffold-debug-plan.txt
 ================================================================
 ```
 

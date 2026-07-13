@@ -53,6 +53,12 @@ failure aborts loudly (nothing half-written); the raw model output is saved to
 `scaffold-debug-<stage>.txt` for inspection. Re-running refuses to overwrite an
 existing project unless you pass `--force`.
 
+You don't need a big model: scaffolding is tested live end-to-end on a 9B via
+llama.cpp (see `docs/smoke-test-scaffold.md`). JSON stages request structured
+output (`response_format: json_object`) from the server when supported, which
+is what makes small local models reliable here; generated code is validated
+(syntax + prompt-echo rejection) before anything is written.
+
 ## Cloud backends (optional, cost money)
 
 | Backend | Flags | Key (env var only) |
