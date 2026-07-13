@@ -1,0 +1,15 @@
+# Copy to config.toml and adjust. Local-first: the default backend is a
+# local OpenAI-compatible server (llama.cpp, Ollama, vLLM) and needs no API
+# key. Cloud keys come from env vars only: ANTHROPIC_API_KEY, OPENAI_API_KEY.
+
+backend = "local"              # "local" (default) | "anthropic" | "openai"
+base_url = "http://localhost:8080/v1"   # your local server; Ollama: http://localhost:11434/v1
+# model = "qwen35-9b"          # llama.cpp ignores this; Ollama/vLLM need the real model name
+vault = "/vault"               # your Obsidian vault root
+level = "intermediate"         # beginner | intermediate | advanced
+max_input_chars = 24000        # keep within your local model's context window
+
+# Cloud instead (costs money; anthropic and openai need their env-var key):
+# backend = "anthropic"
+# model = "claude-sonnet-5"
+# max_input_chars = 400000
