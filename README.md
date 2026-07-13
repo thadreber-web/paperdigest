@@ -1,7 +1,7 @@
 # paperdigest
 
 Turn an AI/ML arXiv paper into a folder of plain-English, wikilinked Obsidian
-notes: concept-by-concept explainers, ASCII diagrams, equations walked through
+notes: concept-by-concept explainers, Mermaid diagrams, equations walked through
 line by line, and a vault-wide jargon glossary.
 
 **Local-first.** By default paperdigest talks to a local OpenAI-compatible
@@ -36,6 +36,20 @@ output, and very small models fail cleanly with an `error:` message. Set
 Output lands in `<vault>/Papers/<year>-<title-slug>/` plus new term notes in
 `<vault>/Glossary/`. Re-running the same paper refuses to overwrite unless you
 pass `--force`. Glossary term notes are never overwritten.
+
+### Diagrams: Mermaid or ASCII
+
+Structural concepts get a diagram. The default is **Mermaid** (renders
+natively in Obsidian); pass `--diagram ascii` (or set `diagram = "ascii"` in
+`config.toml`) for plain-text diagrams that can never have syntax errors.
+Small local models sometimes emit Mermaid with unquoted special characters in
+node labels, so every diagram goes through a deterministic sanitizer that
+auto-quotes them. Optionally, if `node` is on your PATH and the `mermaid` npm
+package is importable from the directory you run paperdigest in
+(`npm install mermaid jsdom global-jsdom`), each diagram is also parse-checked
+and a warning names any note whose diagram still fails. No node? Validation is
+skipped silently — the worst case is one diagram rendering as an error box in
+Obsidian instead of a picture.
 
 ## Scaffold a research project
 

@@ -117,3 +117,25 @@ def test_concept_missing_title_raises_llmerror(paper):
     backend = FakeBackend([bad_outline])
     with pytest.raises(LLMError, match="missing 'title'"):
         build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None)
+
+
+def test_diagram_mermaid_is_default_prompt_and_sanitizes(paper):
+    body = "Intro.\n```mermaid\nflowchart LR\n    A[Foo (bar)] --> B[Ok]\n```\n"
+    backend = FakeBackend([OUTLINE, body, "c2", GLOSSARY])
+    d = build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None)
+    concept_system = backend.calls[1][0]
+    assert "Mermaid" in concept_system and "ASCII" not in concept_system
+    assert 'A["Foo (bar)"]' in d.concepts[0].body_md
+
+
+def test_diagram_ascii_option_keeps_old_prompt(paper):
+    backend = FakeBackend([OUTLINE, "c1", "c2", GLOSSARY])
+    build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None, diagram="ascii")
+    concept_system = backend.calls[1][0]
+    assert "ASCII" in concept_system and "Mermaid" not in concept_system
+
+
+def test_invalid_diagram_raises(paper):
+    backend = FakeBackend([OUTLINE])
+    with pytest.raises(ValueError, match="diagram"):
+        build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None, diagram="svg")
