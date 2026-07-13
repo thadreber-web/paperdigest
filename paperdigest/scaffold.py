@@ -138,16 +138,36 @@ def _stage_json(backend: Backend, stage: str, system: str, user: str, required: 
     return data
 
 
+def _validate_python(stage: str, code: str, raw: str) -> None:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        raise ScaffoldError(stage, f"generated Python does not parse: {e}", raw=raw) from e
+    # Prompt echoes like `src/pkg/encoder.py` parse as name-division expressions,
+    # so ast.parse alone misses them. Bare top-level expressions other than
+    # docstrings and calls are junk in generated files.
+    for node in tree.body:
+        if isinstance(node, ast.Expr):
+            value = node.value
+            if isinstance(value, ast.Call):
+                continue
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                continue
+            raise ScaffoldError(
+                stage,
+                f"generated Python has a junk top-level expression at line {node.lineno} "
+                f"(likely a prompt echo): {ast.unparse(node).strip()[:80]!r}",
+                raw=raw,
+            )
+
+
 def _stage_python(backend: Backend, stage: str, system: str, user: str) -> str:
     try:
         raw = complete_with_retry(backend, system, user)
     except LLMError as e:
         raise ScaffoldError(stage, str(e)) from e
     code = strip_fences(raw)
-    try:
-        ast.parse(code)
-    except SyntaxError as e:
-        raise ScaffoldError(stage, f"generated Python does not parse: {e}", raw=raw) from e
+    _validate_python(stage, code, raw)
     return code
 
 
@@ -227,10 +247,7 @@ def build_scaffold(paper: Paper, backend: Backend, max_chars: int,
         required=("train_py", "evaluate_py", "base_yaml", "smoke_yaml", "smoke_readme"),
     )
     for key in ("train_py", "evaluate_py"):
-        try:
-            ast.parse(str(harness[key]))
-        except SyntaxError as e:
-            raise ScaffoldError("harness", f"{key} does not parse as Python: {e}", raw=str(harness[key])) from e
+        _validate_python("harness", str(harness[key]), raw=str(harness[key]))
     files["train.py"] = str(harness["train_py"])
     files["evaluate.py"] = str(harness["evaluate_py"])
     files["configs/base.yaml"] = str(harness["base_yaml"])

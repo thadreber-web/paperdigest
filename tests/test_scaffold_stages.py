@@ -187,3 +187,43 @@ def test_stage_python_does_not_use_json_mode():
     backend = FakeBackend([MODULE_PY])
     scaffold._stage_python(backend, "module:model.py", "sys", "user")
     assert backend.json_modes == [False]
+
+
+PROMPT_ECHO_PY = (
+    "src/attention_is_all_you_need/encoder.py\n"  # parses as a division expression
+    "import torch\n\n"
+    "def build_encoder(cfg: dict):\n"
+    '    """Build the encoder. See paper §3.1."""\n'
+    "    raise NotImplementedError\n"
+)
+
+
+def test_stage_python_rejects_prompt_echo_line():
+    backend = FakeBackend([PROMPT_ECHO_PY])
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold._stage_python(backend, "module:encoder.py", "sys", "user")
+    assert exc.value.stage == "module:encoder.py"
+    assert "line 1" in str(exc.value)
+    assert exc.value.raw == PROMPT_ECHO_PY
+
+
+def test_stage_python_allows_docstrings_and_toplevel_calls():
+    code = '"""Module docstring."""\nimport sys\n\n\ndef main():\n    pass\n\n\nmain()\n'
+    backend = FakeBackend([code])
+    assert scaffold._stage_python(backend, "module:x.py", "sys", "user") == code.strip()
+
+
+def test_harness_rejects_prompt_echo_in_train_py():
+    echo_harness = json.dumps(
+        {
+            "train_py": PROMPT_ECHO_PY,
+            "evaluate_py": TRAIN_PY,
+            "base_yaml": "lr: 0.001",
+            "smoke_yaml": "epochs: 1",
+            "smoke_readme": "# Smoke",
+        }
+    )
+    backend = FakeBackend([ANALYZE, PLAN, MODULE_PY, SMOKE_TEST, echo_harness])
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold.build_scaffold(make_paper(), backend, max_chars=100_000, progress=lambda m: None)
+    assert exc.value.stage == "harness"
