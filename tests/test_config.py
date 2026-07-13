@@ -52,3 +52,12 @@ def test_unknown_toml_key_raises(tmp_path):
     f.write_text('api_key = "sk-nope"\n')
     with pytest.raises(ValueError, match="unknown config keys"):
         load_config(f)
+
+
+def test_diagram_defaults_to_mermaid():
+    assert load_config(None).diagram == "mermaid"
+
+
+def test_invalid_diagram_raises():
+    with pytest.raises(ValueError, match="diagram"):
+        load_config(None, diagram="png")

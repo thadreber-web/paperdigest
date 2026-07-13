@@ -1,6 +1,6 @@
 [project]
 name = "paperdigest"
-version = "0.1.0"
+version = "0.2.0"
 description = "Turn AI/ML papers into plain-English Obsidian notes and reproduction-ready project scaffolds — local-first, runs on a 9B model"
 readme = "README.md"
 license = { file = "LICENSE" }

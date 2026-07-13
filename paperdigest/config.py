@@ -6,6 +6,7 @@ from pathlib import Path
 
 LEVELS = ("beginner", "intermediate", "advanced")
 BACKENDS = ("local", "anthropic", "openai")
+DIAGRAMS = ("mermaid", "ascii")
 DEFAULT_MODELS = {
     "local": "local",  # llama.cpp ignores the name; Ollama/vLLM users pass --model
     "anthropic": "claude-sonnet-5",
@@ -20,6 +21,7 @@ class Config:
     base_url: str | None = None  # local backend defaults to llama.cpp's http://localhost:8080/v1
     vault: Path = Path("/vault")
     level: str = "intermediate"
+    diagram: str = "mermaid"  # "mermaid" (renders in Obsidian) | "ascii" (never breaks)
     max_input_chars: int = 400_000  # lower this for small-context local models
     cache_dir: Path = Path.home() / ".cache" / "paperdigest"
 
@@ -41,6 +43,8 @@ def load_config(path: Path | None = None, **overrides) -> Config:
         raise ValueError(f"level must be one of {LEVELS}, got {cfg.level!r}")
     if cfg.backend not in BACKENDS:
         raise ValueError(f"backend must be one of {BACKENDS}, got {cfg.backend!r}")
+    if cfg.diagram not in DIAGRAMS:
+        raise ValueError(f"diagram must be one of {DIAGRAMS}, got {cfg.diagram!r}")
     if cfg.model is None:
         cfg = replace(cfg, model=DEFAULT_MODELS[cfg.backend])
     return cfg

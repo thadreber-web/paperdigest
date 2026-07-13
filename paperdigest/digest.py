@@ -5,6 +5,7 @@ import sys
 from dataclasses import dataclass
 from typing import Callable
 
+from . import mermaid
 from .extract import Paper
 from .llm import Backend, LLMError, complete_with_retry, strip_fences
 
@@ -59,10 +60,23 @@ Reader level: {guidance}
 Rules:
 - Plain English. Strip jargon or define it inline in parentheses.
 - Use an analogy if it genuinely helps.
-- If the concept is structural (architecture, data flow, training loop, algorithm), include an ASCII diagram in a fenced code block.
+{diagram_guidance}
 - If the concept involves key equations, show them in LaTeX ($...$ or $$...$$) followed by a line-by-line plain-English walkthrough.
 - Cite where in the paper the idea comes from (e.g. "from §3.2").
 Output ONLY the markdown body: no top-level heading, no frontmatter."""
+
+DIAGRAM_GUIDANCE = {
+    "ascii": (
+        "- If the concept is structural (architecture, data flow, training loop, algorithm), "
+        "include an ASCII diagram in a fenced code block."
+    ),
+    "mermaid": (
+        "- If the concept is structural (architecture, data flow, training loop, algorithm), "
+        "include a Mermaid diagram in a ```mermaid fenced code block "
+        "(flowchart TD or LR; simple node/edge syntax only; quote any node label "
+        "containing parentheses, math, or special characters)."
+    ),
+}
 
 _GLOSSARY_SYSTEM = """\
 You define research-paper jargon in plain English for a {level}-level reader.
@@ -115,10 +129,14 @@ def build_digest(
     existing_terms: set[str],
     max_chars: int,
     progress: Callable[[str], None] = _default_progress,
+    diagram: str = "mermaid",
 ) -> Digest:
     if level not in LEVEL_GUIDANCE:
         raise ValueError(f"level must be one of {tuple(LEVEL_GUIDANCE)}, got {level!r}")
+    if diagram not in DIAGRAM_GUIDANCE:
+        raise ValueError(f"diagram must be one of {tuple(DIAGRAM_GUIDANCE)}, got {diagram!r}")
     guidance = LEVEL_GUIDANCE[level]
+    concept_system = _CONCEPT_SYSTEM.format(guidance=guidance, diagram_guidance=DIAGRAM_GUIDANCE[diagram])
     body = _paper_body(paper, max_chars, progress)
 
     progress(f"Outlining '{paper.title}'...")
@@ -143,12 +161,17 @@ def build_digest(
         section_text = _find_section_text(paper, section, fallback=body[:20_000])
         md = complete_with_retry(
             backend,
-            _CONCEPT_SYSTEM.format(guidance=guidance),
+            concept_system,
             f"PAPER: {paper.title}\nPAPER TLDR: {outline['tldr']}\n"
             f"CONCEPT TO EXPLAIN: {title}\nSOURCE SECTION: {section}\n\n"
             f"ABSTRACT: {paper.abstract}\n\nSECTION TEXT:\n{section_text}",
-        )
-        concepts.append(ConceptNote(title=title, body_md=md.strip(), section=section))
+        ).strip()
+        if diagram == "mermaid":
+            md = mermaid.sanitize_markdown(md)
+            for block in mermaid.mermaid_blocks(md):
+                if mermaid.validate(block) is False:  # None = no local parser; skip silently
+                    progress(f"Warning: mermaid diagram in '{title}' failed parse validation; kept as-is.")
+        concepts.append(ConceptNote(title=title, body_md=md, section=section))
 
     jargon = [str(t) for t in outline["jargon"]]
     new_terms = [t for t in jargon if t.lower() not in existing_terms]

@@ -7,6 +7,7 @@ base_url = "http://localhost:8080/v1"   # your local server; Ollama: http://loca
 # model = "qwen35-9b"          # llama.cpp ignores this; Ollama/vLLM need the real model name
 vault = "/vault"               # your Obsidian vault root
 level = "intermediate"         # beginner | intermediate | advanced
+diagram = "mermaid"            # mermaid (renders in Obsidian) | ascii (never breaks)
 max_input_chars = 24000        # keep within your local model's context window
 
 # Cloud instead (costs money; anthropic and openai need their env-var key):

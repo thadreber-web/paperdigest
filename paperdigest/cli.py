@@ -43,6 +43,7 @@ def digest(
     model: str = typer.Option(None, "--model"),
     base_url: str = typer.Option(None, "--base-url", help="local server URL (default http://localhost:8080/v1)"),
     vault: Path = typer.Option(None, "--vault", help="Obsidian vault root (notes go to Papers/ and Glossary/)"),
+    diagram: str = typer.Option(None, "--diagram", help="mermaid (default) | ascii"),
     config: Path = typer.Option(Path("config.toml"), "--config"),
     force: bool = typer.Option(False, "--force", help="overwrite an existing paper folder"),
 ):
@@ -55,6 +56,7 @@ def digest(
             model=model,
             base_url=base_url,
             vault=vault,
+            diagram=diagram,
         )
         arxiv_id = fetch.parse_arxiv_id(ref)
         _progress(f"Fetching arXiv {arxiv_id}...")
@@ -66,7 +68,8 @@ def digest(
         gdir = cfg.vault / "Glossary"
         existing_terms = {p.stem.lower() for p in gdir.glob("*.md")} if gdir.exists() else set()
         d = digest_mod.build_digest(
-            paper, llm_backend, cfg.level, existing_terms, cfg.max_input_chars, progress=_progress
+            paper, llm_backend, cfg.level, existing_terms, cfg.max_input_chars,
+            progress=_progress, diagram=cfg.diagram,
         )
         folder = render.render_digest(d, cfg.vault, force=force)
         print(folder)
