@@ -1,6 +1,6 @@
 [project]
 name = "paperdigest"
-version = "0.2.0"
+version = "0.3.0"
 description = "Turn AI/ML papers into plain-English Obsidian notes and reproduction-ready project scaffolds — local-first, runs on a 9B model"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-cov", "ruff"]
 
 [project.scripts]
 paperdigest = "paperdigest.cli:app"
@@ -40,3 +40,16 @@ packages = ["paperdigest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+exclude = [".venv", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+# These files embed multi-line LLM prompt text in triple-quoted strings;
+# wrapping would insert literal newlines into the prompts sent to the model.
+[tool.ruff.lint.per-file-ignores]
+"paperdigest/digest.py" = ["E501"]
+"paperdigest/scaffold.py" = ["E501"]

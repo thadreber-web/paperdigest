@@ -1,9 +1,9 @@
 import json
 
+from conftest import FakeBackend  # tests/ is on sys.path under pytest
 from typer.testing import CliRunner
 
 from paperdigest import cli
-from conftest import FakeBackend  # tests/ is on sys.path under pytest
 
 runner = CliRunner()
 
@@ -24,7 +24,7 @@ def _fake_responses():
 
 
 def _patch(monkeypatch, fixture_html):
-    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None: fixture_html)
+    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None, refresh=False: fixture_html)
     monkeypatch.setattr(cli, "make_backend", lambda *a, **k: FakeBackend(_fake_responses()))
 
 
@@ -54,7 +54,7 @@ def test_rerun_guard_fires_before_llm_calls(tmp_path, monkeypatch, fixture_html)
     def boom(*a, **k):
         raise AssertionError("LLM backend should not be constructed when output exists")
 
-    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None: fixture_html)
+    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None, refresh=False: fixture_html)
     monkeypatch.setattr(cli, "make_backend", boom)
     result = runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path)])
     assert result.exit_code == 1
@@ -73,7 +73,7 @@ def test_existing_glossary_terms_skip_llm_definitions(tmp_path, monkeypatch, fix
     gdir = tmp_path / "Glossary"
     gdir.mkdir(parents=True)
     (gdir / "attention.md").write_text("MINE")
-    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None: fixture_html)
+    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None, refresh=False: fixture_html)
     monkeypatch.setattr(cli, "make_backend", lambda *a, **k: FakeBackend([OUTLINE, "Attention body."]))
     result = runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path)])
     assert result.exit_code == 0, result.output

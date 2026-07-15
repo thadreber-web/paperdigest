@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -28,9 +30,20 @@ def parse_arxiv_id(ref: str) -> str:
     return m.group(1) + (m.group(2) or "")
 
 
-def fetch_html(arxiv_id: str, cache_dir: Path, client: httpx.Client | None = None) -> str:
+def _write_cache_atomically(cache_file: Path, text: str) -> None:
+    fd, tmp_name = tempfile.mkstemp(dir=cache_file.parent, prefix=f".{cache_file.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp_name, cache_file)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
+def fetch_html(arxiv_id: str, cache_dir: Path, client: httpx.Client | None = None, *, refresh: bool = False) -> str:
     cache_file = cache_dir / f"{arxiv_id}.html"
-    if cache_file.exists():
+    if not refresh and cache_file.exists():
         return cache_file.read_text()
     client = client or httpx.Client(follow_redirects=True, timeout=30)
     errors = []
@@ -43,7 +56,7 @@ def fetch_html(arxiv_id: str, cache_dir: Path, client: httpx.Client | None = Non
             continue
         if resp.status_code == 200 and "ltx_title" in resp.text:
             cache_dir.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(resp.text)
+            _write_cache_atomically(cache_file, resp.text)
             return resp.text
         errors.append(f"{url} -> HTTP {resp.status_code}")
     raise FetchError(

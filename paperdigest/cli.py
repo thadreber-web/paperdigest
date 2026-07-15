@@ -46,6 +46,7 @@ def digest(
     diagram: str = typer.Option(None, "--diagram", help="mermaid (default) | ascii"),
     config: Path = typer.Option(Path("config.toml"), "--config"),
     force: bool = typer.Option(False, "--force", help="overwrite an existing paper folder"),
+    refresh: bool = typer.Option(False, "--refresh", help="re-fetch the paper, ignoring the HTML cache"),
 ):
     """Digest an AI/ML paper into plain-English Obsidian notes."""
     try:
@@ -60,7 +61,7 @@ def digest(
         )
         arxiv_id = fetch.parse_arxiv_id(ref)
         _progress(f"Fetching arXiv {arxiv_id}...")
-        html = fetch.fetch_html(arxiv_id, cfg.cache_dir)
+        html = fetch.fetch_html(arxiv_id, cfg.cache_dir, refresh=refresh)
         paper = extract.extract_paper(html, arxiv_id)
         _progress(f"Extracted '{paper.title}' ({len(paper.sections)} sections)")
         render.check_output_free(render.paper_folder(arxiv_id, paper.title, cfg.vault), force)
@@ -73,7 +74,9 @@ def digest(
         )
         folder = render.render_digest(d, cfg.vault, force=force)
         print(folder)
-    except (fetch.FetchError, extract.ExtractError, LLMError, render.OutputExistsError, ValueError) as e:
+    except (
+        fetch.FetchError, extract.ExtractError, LLMError, render.OutputExistsError, ValueError, FileExistsError,
+    ) as e:
         print(f"error: {e}", file=sys.stderr)
         raise typer.Exit(1)
 
@@ -87,13 +90,14 @@ def scaffold(
     base_url: str = typer.Option(None, "--base-url", help="local server URL (default http://localhost:8080/v1)"),
     config: Path = typer.Option(Path("config.toml"), "--config"),
     force: bool = typer.Option(False, "--force", help="overwrite an existing project folder"),
+    refresh: bool = typer.Option(False, "--refresh", help="re-fetch the paper, ignoring the HTML cache"),
 ):
     """Scaffold a git-initialized research project (structure, docs, stubs) from a paper."""
     try:
         cfg = load_config(config, backend=backend, model=model, base_url=base_url)
         arxiv_id = fetch.parse_arxiv_id(ref)
         _progress(f"Fetching arXiv {arxiv_id}...")
-        html = fetch.fetch_html(arxiv_id, cfg.cache_dir)
+        html = fetch.fetch_html(arxiv_id, cfg.cache_dir, refresh=refresh)
         paper = extract.extract_paper(html, arxiv_id)
         _progress(f"Extracted '{paper.title}' ({len(paper.sections)} sections)")
         folder = scaffold_mod.project_folder(arxiv_id, paper.title, dest)
@@ -104,7 +108,8 @@ def scaffold(
         print(out)
     except scaffold_mod.ScaffoldError as e:
         safe_stage = e.stage.replace(":", "-").replace("/", "-")
-        debug = Path(f"scaffold-debug-{safe_stage}.txt")
+        cfg.cache_dir.mkdir(parents=True, exist_ok=True)
+        debug = cfg.cache_dir / f"scaffold-debug-{arxiv_id}-{safe_stage}.txt"
         debug.write_text(e.raw or "(no raw model output captured)")
         bar = "=" * 64
         print(bar, file=sys.stderr)
@@ -116,6 +121,8 @@ def scaffold(
         print(f"  raw model output saved to: {debug.resolve()}", file=sys.stderr)
         print(bar, file=sys.stderr)
         raise typer.Exit(1)
-    except (fetch.FetchError, extract.ExtractError, LLMError, render.OutputExistsError, ValueError) as e:
+    except (
+        fetch.FetchError, extract.ExtractError, LLMError, render.OutputExistsError, ValueError, FileExistsError,
+    ) as e:
         print(f"error: {e}", file=sys.stderr)
         raise typer.Exit(1)
