@@ -92,8 +92,9 @@ hazardous patterns, not everything — read the scaffolded code before you run i
 | Anthropic | `--backend anthropic --model claude-sonnet-5` | `ANTHROPIC_API_KEY` |
 
 Every LLM call is retried up to 2 more times with exponential backoff on
-transient errors (connection drops, timeouts, rate limits, 5xx); other errors
-fail immediately. Requests time out after 300s.
+transient errors (connection drops, timeouts, rate limits, 5xx); malformed
+JSON gets one repair round-trip; other errors fail immediately. Requests
+time out after 300s.
 
 ## Docker
 
