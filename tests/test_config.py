@@ -69,3 +69,10 @@ def test_diagram_defaults_to_mermaid():
 def test_invalid_diagram_raises():
     with pytest.raises(ValueError, match="diagram"):
         load_config(None, diagram="png")
+
+
+def test_max_tokens_defaults_and_overrides(tmp_path):
+    assert load_config(None).max_tokens == 8192
+    f = tmp_path / "config.toml"
+    f.write_text("max_tokens = 2048\n")
+    assert load_config(f).max_tokens == 2048

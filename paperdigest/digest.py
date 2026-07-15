@@ -7,7 +7,7 @@ from typing import Callable
 
 from . import mermaid
 from .extract import Paper
-from .llm import Backend, LLMError, complete_with_retry, strip_fences
+from .llm import Backend, LLMError, complete_with_retry, repair_json, strip_fences
 
 
 @dataclass
@@ -83,10 +83,6 @@ You define research-paper jargon in plain English for a {level}-level reader.
 Respond with ONLY valid JSON (no markdown fences): {{"terms": {{"<term>": "<1-2 sentence plain-English definition>"}}}}.
 Every requested term must appear as a key."""
 
-_REPAIR_SYSTEM = (
-    "The user message was supposed to be valid JSON but is not. Return ONLY the corrected JSON, nothing else."
-)
-
 
 def _default_progress(msg: str) -> None:
     print(msg, file=sys.stderr)
@@ -97,7 +93,7 @@ def _call_json(backend: Backend, system: str, user: str) -> dict:
     try:
         return json.loads(strip_fences(raw))
     except json.JSONDecodeError:
-        repaired = complete_with_retry(backend, _REPAIR_SYSTEM, raw, json_mode=True)
+        repaired = repair_json(backend, raw)
         try:
             return json.loads(strip_fences(repaired))
         except json.JSONDecodeError as e:

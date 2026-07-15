@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `max_tokens` config option: the LLM output-token cap (default 8192) is now
+  set explicitly on both backends instead of hard-coded (Anthropic) or left
+  to the server default (OpenAI-compatible).
+- Scaffold stages now get the same one-shot JSON repair round-trip as digest:
+  a malformed response is sent back to the model once for correction before
+  the run aborts.
+- Tag-triggered release workflow: pushing a `v*` tag lints, tests, builds,
+  verifies the tag matches `pyproject.toml`, and attaches the wheel and sdist
+  to a GitHub Release.
+
+### Fixed
+- `__version__` is now derived from package metadata instead of a hard-coded
+  string that had drifted behind `pyproject.toml`.
+- `~` in `vault`/`cache_dir` config values is now expanded.
+
 ## 0.3.0 — 2026-07-15
 
 Robustness and safety hardening.

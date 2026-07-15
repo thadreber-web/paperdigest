@@ -9,6 +9,7 @@ vault = "/vault"               # your Obsidian vault root
 level = "intermediate"         # beginner | intermediate | advanced
 diagram = "mermaid"            # mermaid (renders in Obsidian) | ascii (never breaks)
 max_input_chars = 24000        # keep within your local model's context window
+# max_tokens = 8192            # output token cap; lower for small-context local models
 # cache_dir = "~/.cache/paperdigest"   # where fetched paper HTML is cached
 
 # Cloud instead (costs money; anthropic and openai need their env-var key):
