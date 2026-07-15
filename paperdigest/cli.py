@@ -65,7 +65,7 @@ def digest(
         paper = extract.extract_paper(html, arxiv_id)
         _progress(f"Extracted '{paper.title}' ({len(paper.sections)} sections)")
         render.check_output_free(render.paper_folder(arxiv_id, paper.title, cfg.vault), force)
-        llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url)
+        llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url, cfg.max_tokens)
         gdir = cfg.vault / "Glossary"
         existing_terms = {p.stem.lower() for p in gdir.glob("*.md")} if gdir.exists() else set()
         d = digest_mod.build_digest(
@@ -102,7 +102,7 @@ def scaffold(
         _progress(f"Extracted '{paper.title}' ({len(paper.sections)} sections)")
         folder = scaffold_mod.project_folder(arxiv_id, paper.title, dest)
         render.check_output_free(folder, force)
-        llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url)
+        llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url, cfg.max_tokens)
         project = scaffold_mod.build_scaffold(paper, llm_backend, cfg.max_input_chars, progress=_progress)
         out = scaffold_mod.write_project(project, folder, force=force, progress=_progress)
         print(out)

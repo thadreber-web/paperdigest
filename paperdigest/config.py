@@ -23,6 +23,7 @@ class Config:
     level: str = "intermediate"
     diagram: str = "mermaid"  # "mermaid" (renders in Obsidian) | "ascii" (never breaks)
     max_input_chars: int = 400_000  # lower this for small-context local models
+    max_tokens: int = 8192  # output token cap; lower for small-context local models
     cache_dir: Path = Path.home() / ".cache" / "paperdigest"
 
 

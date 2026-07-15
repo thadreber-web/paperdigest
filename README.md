@@ -31,7 +31,8 @@ Non-default port or engine? Point at it:
 Use a capable instruct model (~7B+); the pipeline needs structured JSON
 output, and very small models fail cleanly with an `error:` message. Set
 `max_input_chars` in `config.toml` to fit your model's context window (e.g.
-24000 for ~8k-token contexts) — long papers are trimmed with a warning.
+24000 for ~8k-token contexts) — long papers are trimmed with a warning; set
+`max_tokens` alongside it to cap output length for the same small context.
 
 Output lands in `<vault>/Papers/<year>-<title-slug>/` plus new term notes in
 `<vault>/Glossary/`. Re-running the same paper refuses to overwrite unless you
