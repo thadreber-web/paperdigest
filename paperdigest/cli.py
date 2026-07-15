@@ -74,7 +74,9 @@ def digest(
         )
         folder = render.render_digest(d, cfg.vault, force=force)
         print(folder)
-    except (fetch.FetchError, extract.ExtractError, LLMError, render.OutputExistsError, ValueError, FileExistsError) as e:
+    except (
+        fetch.FetchError, extract.ExtractError, LLMError, render.OutputExistsError, ValueError, FileExistsError,
+    ) as e:
         print(f"error: {e}", file=sys.stderr)
         raise typer.Exit(1)
 
@@ -119,6 +121,8 @@ def scaffold(
         print(f"  raw model output saved to: {debug.resolve()}", file=sys.stderr)
         print(bar, file=sys.stderr)
         raise typer.Exit(1)
-    except (fetch.FetchError, extract.ExtractError, LLMError, render.OutputExistsError, ValueError, FileExistsError) as e:
+    except (
+        fetch.FetchError, extract.ExtractError, LLMError, render.OutputExistsError, ValueError, FileExistsError,
+    ) as e:
         print(f"error: {e}", file=sys.stderr)
         raise typer.Exit(1)

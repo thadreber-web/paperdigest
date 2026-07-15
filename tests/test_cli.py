@@ -1,9 +1,9 @@
 import json
 
+from conftest import FakeBackend  # tests/ is on sys.path under pytest
 from typer.testing import CliRunner
 
 from paperdigest import cli
-from conftest import FakeBackend  # tests/ is on sys.path under pytest
 
 runner = CliRunner()
 

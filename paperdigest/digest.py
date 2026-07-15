@@ -83,7 +83,9 @@ You define research-paper jargon in plain English for a {level}-level reader.
 Respond with ONLY valid JSON (no markdown fences): {{"terms": {{"<term>": "<1-2 sentence plain-English definition>"}}}}.
 Every requested term must appear as a key."""
 
-_REPAIR_SYSTEM = "The user message was supposed to be valid JSON but is not. Return ONLY the corrected JSON, nothing else."
+_REPAIR_SYSTEM = (
+    "The user message was supposed to be valid JSON but is not. Return ONLY the corrected JSON, nothing else."
+)
 
 
 def _default_progress(msg: str) -> None:
@@ -99,7 +101,9 @@ def _call_json(backend: Backend, system: str, user: str) -> dict:
         try:
             return json.loads(strip_fences(repaired))
         except json.JSONDecodeError as e:
-            raise LLMError(f"model returned unparseable JSON even after a repair attempt: {e}\n---\n{raw[:2000]}") from e
+            raise LLMError(
+                f"model returned unparseable JSON even after a repair attempt: {e}\n---\n{raw[:2000]}"
+            ) from e
 
 
 def _paper_body(paper: Paper, max_chars: int, progress: Callable[[str], None]) -> str:

@@ -1,12 +1,11 @@
 import json
 import subprocess
 
+from conftest import FakeBackend
+from test_scaffold_stages import full_responses  # tests/ is on sys.path under pytest
 from typer.testing import CliRunner
 
-from conftest import FakeBackend
 from paperdigest import cli
-
-from test_scaffold_stages import full_responses  # tests/ is on sys.path under pytest
 
 runner = CliRunner()
 

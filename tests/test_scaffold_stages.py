@@ -1,8 +1,8 @@
 import json
 
 import pytest
-
 from conftest import FakeBackend
+
 from paperdigest import scaffold
 from paperdigest.extract import Paper, Section
 
@@ -43,7 +43,10 @@ MODULE_PY = (
     '    # TODO(paper §3): implement the encoder\n'
     '    raise NotImplementedError\n'
 )
-SMOKE_TEST = "from tiny_transformers_explained import model\n\n\ndef test_api_exists():\n    assert callable(model.build_model)\n"
+SMOKE_TEST = (
+    "from tiny_transformers_explained import model\n\n\n"
+    "def test_api_exists():\n    assert callable(model.build_model)\n"
+)
 
 
 def test_package_name_is_valid_identifier():
@@ -105,7 +108,9 @@ def test_module_filenames_are_stripped_to_basenames():
         }
     )
     backend = FakeBackend([ANALYZE, evil_plan, MODULE_PY, SMOKE_TEST])
-    stubs = scaffold._build_stub_files(make_paper(), backend, "tiny_transformers_explained", max_chars=100_000, progress=lambda m: None)
+    stubs = scaffold._build_stub_files(
+        make_paper(), backend, "tiny_transformers_explained", max_chars=100_000, progress=lambda m: None,
+    )
     assert "src/tiny_transformers_explained/model.py" in stubs
 
 

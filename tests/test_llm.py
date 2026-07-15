@@ -1,4 +1,8 @@
+from types import SimpleNamespace
+
+import httpx
 import pytest
+from conftest import FakeBackend
 
 from paperdigest import llm
 from paperdigest.llm import (
@@ -7,6 +11,7 @@ from paperdigest.llm import (
     OpenAICompatibleBackend,
     complete_with_retry,
     make_backend,
+    strip_fences,
 )
 
 
@@ -73,23 +78,12 @@ def test_retry_exhausted_raises_llmerror():
         complete_with_retry(_Flaky(99), "s", "u", retries=2)
 
 
-from paperdigest.llm import strip_fences
-
-
 def test_strip_fences_removes_markdown_fences():
     assert strip_fences('```json\n{"a": 1}\n```') == '{"a": 1}'
 
 
 def test_strip_fences_passes_plain_text_through():
     assert strip_fences('  {"a": 1}\n') == '{"a": 1}'
-
-
-from types import SimpleNamespace
-
-import httpx
-
-from conftest import FakeBackend
-from paperdigest.llm import OpenAICompatibleBackend
 
 
 def test_complete_with_retry_passes_json_mode():

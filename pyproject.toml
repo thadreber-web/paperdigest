@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-cov", "ruff"]
 
 [project.scripts]
 paperdigest = "paperdigest.cli:app"
@@ -40,3 +40,16 @@ packages = ["paperdigest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+exclude = [".venv", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+# These files embed multi-line LLM prompt text in triple-quoted strings;
+# wrapping would insert literal newlines into the prompts sent to the model.
+[tool.ruff.lint.per-file-ignores]
+"paperdigest/digest.py" = ["E501"]
+"paperdigest/scaffold.py" = ["E501"]
