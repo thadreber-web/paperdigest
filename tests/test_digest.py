@@ -3,7 +3,7 @@ import json
 import pytest
 from conftest import FakeBackend  # tests/ is on sys.path under pytest
 
-from paperdigest.digest import Digest, _call_json, build_digest
+from paperdigest.digest import Digest, _call_json, _find_section_text, build_digest
 from paperdigest.extract import Paper, Section
 from paperdigest.llm import LLMError
 
@@ -139,3 +139,57 @@ def test_invalid_diagram_raises(paper):
     backend = FakeBackend([OUTLINE])
     with pytest.raises(ValueError, match="diagram"):
         build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None, diagram="svg")
+
+
+def test_find_section_text_exact_title_wins_over_substring_collision():
+    p = Paper(
+        arxiv_id="x",
+        title="t",
+        abstract="a",
+        sections=[
+            Section("Method", "exact method text"),
+            Section("Methodology", "methodology text"),
+        ],
+        url="https://example.com",
+    )
+    assert _find_section_text(p, "method", fallback="FALLBACK") == "exact method text"
+
+
+def test_find_section_text_matches_numeric_prefixed_title():
+    p = Paper(
+        arxiv_id="x",
+        title="t",
+        abstract="a",
+        sections=[
+            Section("3 Method", "method text"),
+            Section("3.1 Ablations", "ablations text"),
+        ],
+        url="https://example.com",
+    )
+    assert _find_section_text(p, "Method", fallback="FALLBACK") == "method text"
+    assert _find_section_text(p, "Ablations", fallback="FALLBACK") == "ablations text"
+
+
+def test_find_section_text_numeric_only_title_matches_correct_section():
+    p = Paper(
+        arxiv_id="x",
+        title="t",
+        abstract="a",
+        sections=[
+            Section("4", "four text"),
+            Section("3", "three text"),
+        ],
+        url="https://example.com",
+    )
+    assert _find_section_text(p, "3", fallback="FALLBACK") == "three text"
+
+
+def test_find_section_text_no_match_returns_fallback():
+    p = Paper(
+        arxiv_id="x",
+        title="t",
+        abstract="a",
+        sections=[Section("Introduction", "intro text")],
+        url="https://example.com",
+    )
+    assert _find_section_text(p, "Nonexistent Section", fallback="FALLBACK") == "FALLBACK"

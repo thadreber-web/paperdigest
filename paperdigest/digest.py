@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import dataclass
 from typing import Callable
@@ -113,13 +114,31 @@ def _paper_body(paper: Paper, max_chars: int, progress: Callable[[str], None]) -
     return "\n\n".join(trimmed)
 
 
+_SECTION_NUM_RE = re.compile(r"^\d+(\.\d+)*\.?\s*")
+
+
+def _strip_section_num(title: str) -> str:
+    return _SECTION_NUM_RE.sub("", title).strip()
+
+
 def _find_section_text(paper: Paper, section_title: str, fallback: str) -> str:
     want = section_title.strip().lower()
-    for s in paper.sections:
-        have = s.title.strip().lower()
-        if want and (want in have or have in want):
+    if not want:
+        return fallback
+    haves = [(s, s.title.strip().lower()) for s in paper.sections]
+    stripped_want = _strip_section_num(want)
+    if stripped_want:  # tier 1: exact match ignoring leading section numbers
+        for s, have in haves:
+            if _strip_section_num(have) == stripped_want:
+                return s.text
+    for s, have in haves:  # tier 2: exact match, numbers included
+        if have == want:
             return s.text
-    return fallback
+    best, best_overlap = None, -1  # tier 3: bidirectional substring, longest overlap wins
+    for s, have in haves:
+        if (want in have or have in want) and min(len(want), len(have)) > best_overlap:
+            best, best_overlap = s, min(len(want), len(have))
+    return best.text if best else fallback
 
 
 def build_digest(

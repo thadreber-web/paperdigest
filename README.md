@@ -36,7 +36,10 @@ output, and very small models fail cleanly with an `error:` message. Set
 
 Output lands in `<vault>/Papers/<year>-<title-slug>/` plus new term notes in
 `<vault>/Glossary/`. Re-running the same paper refuses to overwrite unless you
-pass `--force`. Glossary term notes are never overwritten.
+pass `--force`. Glossary term notes are never overwritten. Pass `--quiet` to
+suppress progress output, `--version` to print the installed version, or
+`--max-input-chars`/`--max-tokens`/`--cache-dir` to override those config
+keys per run (both `digest` and `scaffold` accept all of these).
 
 ### Diagrams: Mermaid or ASCII
 

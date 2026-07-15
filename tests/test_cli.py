@@ -84,3 +84,37 @@ def test_bad_ref_errors_cleanly(tmp_path):
     result = runner.invoke(cli.app, ["https://example.com/nope", "--vault", str(tmp_path)])
     assert result.exit_code == 1
     assert "error:" in result.output
+
+
+def test_version_flag():
+    from paperdigest import __version__
+
+    result = runner.invoke(cli.app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == __version__
+
+
+def test_quiet_suppresses_progress_but_prints_folder(tmp_path, monkeypatch, fixture_html):
+    _patch(monkeypatch, fixture_html)
+    result = runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path), "--quiet"])
+    assert result.exit_code == 0, result.output
+    assert "Fetching arXiv" not in result.output
+    folder = tmp_path / "Papers" / "2017-tiny-transformers-explained"
+    assert result.output.strip() == str(folder)
+
+
+def test_max_input_chars_override_reaches_config(tmp_path, monkeypatch, fixture_html):
+    seen = {}
+    real_build_digest = cli.digest_mod.build_digest
+
+    def spy(paper, backend, level, existing_terms, max_input_chars, **kwargs):
+        seen["max_input_chars"] = max_input_chars
+        return real_build_digest(paper, backend, level, existing_terms, max_input_chars, **kwargs)
+
+    _patch(monkeypatch, fixture_html)
+    monkeypatch.setattr(cli.digest_mod, "build_digest", spy)
+    result = runner.invoke(
+        cli.app, ["1706.03762", "--vault", str(tmp_path), "--max-input-chars", "12345"]
+    )
+    assert result.exit_code == 0, result.output
+    assert seen["max_input_chars"] == 12345
