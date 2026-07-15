@@ -60,11 +60,26 @@ def test_project_folder_uses_year_and_slug(tmp_path):
 
 
 def test_stage_json_rejects_bad_json():
-    backend = FakeBackend(["this is not json"])
+    backend = FakeBackend(["this is not json", "still not json"])
     with pytest.raises(scaffold.ScaffoldError) as exc:
         scaffold._stage_json(backend, "analyze", "sys", "user", required=("components",))
     assert exc.value.stage == "analyze"
     assert exc.value.raw == "this is not json"
+
+
+def test_stage_json_repairs_broken_json():
+    backend = FakeBackend(['{"components": [],,,}', ANALYZE])
+    data = scaffold._stage_json(backend, "analyze", "sys", "user", required=("components",))
+    assert data["datasets"] == ["toy-corpus"]
+    assert len(backend.calls) == 2
+
+
+def test_stage_json_raises_after_failed_repair():
+    backend = FakeBackend(["nope", "still nope"])
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold._stage_json(backend, "analyze", "sys", "user", required=("components",))
+    assert exc.value.stage == "analyze"
+    assert "repair attempt" in str(exc.value)
 
 
 def test_stage_json_rejects_missing_fields():

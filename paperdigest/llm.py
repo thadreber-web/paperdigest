@@ -147,3 +147,13 @@ def complete_with_retry(
             if attempt < retries:
                 time.sleep(2**attempt)
     raise LLMError(f"LLM call failed after {retries + 1} attempts: {last_error}") from last_error
+
+
+_REPAIR_SYSTEM = (
+    "The user message was supposed to be valid JSON but is not. Return ONLY the corrected JSON, nothing else."
+)
+
+
+def repair_json(backend: Backend, raw: str) -> str:
+    """One-shot repair round-trip: ask the model to fix JSON it just produced but that failed to parse."""
+    return complete_with_retry(backend, _REPAIR_SYSTEM, raw, json_mode=True)
