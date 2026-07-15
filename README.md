@@ -73,6 +73,12 @@ output (`response_format: json_object`) from the server when supported, which
 is what makes small local models reliable here; generated code is validated
 (syntax + prompt-echo rejection) before anything is written.
 
+**A note on trust:** every generated `.py` file is still LLM output. Before writing it,
+paperdigest checks it parses and scans it for dangerous calls (`subprocess`, `socket`,
+`eval`/`exec`, `os.system`, `pickle.load`, `shutil.rmtree`, and similar) and aborts loudly
+if it finds any. That scan catches obviously hazardous patterns, not everything — read
+the scaffolded code before you run it.
+
 ## Cloud backends (optional, cost money)
 
 | Backend | Flags | Key (env var only) |

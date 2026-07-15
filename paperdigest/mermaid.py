@@ -16,7 +16,7 @@ import subprocess
 
 _LABEL_RE = re.compile(r"\[([^\[\]\n]+)\]")
 _SPECIAL_RE = re.compile(r"[(){}<>:,]")
-_FENCE_RE = re.compile(r"(```mermaid\n)(.*?)(\n```)", re.DOTALL)
+_FENCE_RE = re.compile(r"(```mermaid[ \t]*\r?\n)(.*?)(\r?\n```)", re.DOTALL)
 
 _available: bool | None = None  # None = not yet detected; cached per process
 
@@ -50,11 +50,11 @@ def sanitize_block(code: str) -> str:
 
 def sanitize_markdown(md: str) -> str:
     """Apply sanitize_block to every ```mermaid fence in a markdown document."""
-    return _FENCE_RE.sub(lambda m: m.group(1) + sanitize_block(m.group(2)) + m.group(3), md)
+    return _FENCE_RE.sub(lambda m: m.group(1) + sanitize_block(m.group(2).replace("\r\n", "\n")) + m.group(3), md)
 
 
 def mermaid_blocks(md: str) -> list[str]:
-    return [m.group(2) for m in _FENCE_RE.finditer(md)]
+    return [m.group(2).replace("\r\n", "\n") for m in _FENCE_RE.finditer(md)]
 
 
 def _run_parser(code: str) -> str | None:

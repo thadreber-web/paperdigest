@@ -55,28 +55,35 @@ def render_digest(digest: Digest, vault: Path, force: bool = False) -> Path:
         shutil.rmtree(folder)
     folder.mkdir(parents=True)
 
-    concept_names = [f"{i:02d} {note_name(c.title)}" for i, c in enumerate(digest.concepts, 1)]
+    try:
+        concept_names = [f"{i:02d} {note_name(c.title)}" for i, c in enumerate(digest.concepts, 1)]
 
-    fm = _frontmatter(digest)
-    overview = fm + f"# {digest.paper.title}\n\n"
-    overview += f"**TLDR:** {digest.tldr}\n\n"
-    overview += f"## Why it matters\n\n{digest.why_it_matters}\n\n"
-    overview += "## Concepts\n\n" + "\n".join(f"- [[{n}]]" for n in concept_names) + "\n\n"
-    if digest.jargon:
-        links = " · ".join(f"[[{note_name(t.lower())}]]" for t in digest.jargon)
-        overview += f"## Glossary terms\n\n{links}\n\n"
-    if digest.self_test:
-        overview += "## Check your understanding\n\n"
-        overview += "\n".join(f"{i}. {q}" for i, q in enumerate(digest.self_test, 1)) + "\n"
-    (folder / "00 Overview.md").write_text(overview)
+        fm = _frontmatter(digest)
+        overview = fm + f"# {digest.paper.title}\n\n"
+        overview += f"**TLDR:** {digest.tldr}\n\n"
+        overview += f"## Why it matters\n\n{digest.why_it_matters}\n\n"
+        overview += "## Concepts\n\n" + "\n".join(f"- [[{n}]]" for n in concept_names) + "\n\n"
+        if digest.jargon:
+            links = " · ".join(f"[[{note_name(t.lower())}]]" for t in digest.jargon)
+            overview += f"## Glossary terms\n\n{links}\n\n"
+        if digest.self_test:
+            overview += "## Check your understanding\n\n"
+            overview += "\n".join(f"{i}. {q}" for i, q in enumerate(digest.self_test, 1)) + "\n"
+        (folder / "00 Overview.md").write_text(overview)
 
-    for name, concept in zip(concept_names, digest.concepts):
-        note = fm + f"# {note_name(concept.title)}\n\n"
-        if concept.section:
-            note += f"*Source: {concept.section} of [{digest.paper.title}]({digest.paper.url})*\n\n"
-        note += concept.body_md + "\n"
-        (folder / f"{name}.md").write_text(note)
+        for name, concept in zip(concept_names, digest.concepts):
+            note = fm + f"# {note_name(concept.title)}\n\n"
+            if concept.section:
+                note += f"*Source: {concept.section} of [{digest.paper.title}]({digest.paper.url})*\n\n"
+            note += concept.body_md + "\n"
+            (folder / f"{name}.md").write_text(note)
+    except Exception:
+        shutil.rmtree(folder, ignore_errors=True)  # never leave a half-written paper folder
+        raise
 
+    # Glossary notes live outside the paper folder and accumulate across runs, so a
+    # failure here must not trigger the rollback above (folder is already complete)
+    # nor clobber pre-existing/edited term notes.
     if digest.glossary:
         gdir = vault / "Glossary"
         gdir.mkdir(parents=True, exist_ok=True)

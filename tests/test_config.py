@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from paperdigest.config import Config, load_config
+from paperdigest.config import load_config
 
 
 def test_defaults_are_local_first():

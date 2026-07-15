@@ -138,7 +138,64 @@ def _stage_json(backend: Backend, stage: str, system: str, user: str, required: 
     return data
 
 
-def _validate_python(stage: str, code: str, raw: str) -> None:
+_BANNED_IMPORTS = (
+    "subprocess", "socket", "ctypes", "urllib", "http.client",
+    "requests", "ftplib", "telnetlib", "smtplib",
+)
+_BANNED_CALL_NAMES = ("eval", "exec", "compile", "__import__")
+_BANNED_OS_EXACT = ("system", "popen", "fork")
+_BANNED_OS_PREFIXES = ("exec", "spawn")
+_BANNED_PICKLE = ("load", "loads")
+_BANNED_SHUTIL = ("rmtree",)
+
+
+class _SafetyVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[str] = []
+
+    def _flag(self, node: ast.AST, message: str) -> None:
+        self.violations.append(f"line {node.lineno}: {message}")
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            if any(alias.name == b or alias.name.startswith(b + ".") for b in _BANNED_IMPORTS):
+                self._flag(node, f"import of banned module {alias.name!r}")
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        module = node.module or ""
+        if any(module == b or module.startswith(b + ".") for b in _BANNED_IMPORTS):
+            self._flag(node, f"import from banned module {module!r}")
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in _BANNED_CALL_NAMES:
+            self._flag(node, f"call to banned builtin {func.id}()")
+        elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            root, attr = func.value.id, func.attr
+            if root == "os" and (attr in _BANNED_OS_EXACT or attr.startswith(_BANNED_OS_PREFIXES)):
+                self._flag(node, f"call to banned function os.{attr}()")
+            elif root == "pickle" and attr in _BANNED_PICKLE:
+                self._flag(node, f"call to banned function pickle.{attr}()")
+            elif root == "shutil" and attr in _BANNED_SHUTIL:
+                self._flag(node, f"call to banned function shutil.{attr}()")
+        self.generic_visit(node)
+
+
+def check_python_safety(code: str, filename: str) -> list[str]:
+    """Scan LLM-generated Python for dangerous imports/calls (subprocess, network, eval, etc).
+
+    Returns a list of human-readable violation descriptions (empty if none). Callers
+    should abort the run on any violation — this is a coarse AST scan, not a sandbox.
+    """
+    tree = ast.parse(code, filename=filename)
+    visitor = _SafetyVisitor()
+    visitor.visit(tree)
+    return visitor.violations
+
+
+def _validate_python(stage: str, code: str, raw: str, filename: str = "<generated>") -> None:
     try:
         tree = ast.parse(code)
     except SyntaxError as e:
@@ -159,15 +216,22 @@ def _validate_python(stage: str, code: str, raw: str) -> None:
                 f"(likely a prompt echo): {ast.unparse(node).strip()[:80]!r}",
                 raw=raw,
             )
+    violations = check_python_safety(code, filename)
+    if violations:
+        raise ScaffoldError(
+            stage,
+            f"generated file {filename} failed the safety scan:\n" + "\n".join(violations),
+            raw=raw,
+        )
 
 
-def _stage_python(backend: Backend, stage: str, system: str, user: str) -> str:
+def _stage_python(backend: Backend, stage: str, system: str, user: str, filename: str = "<generated>") -> str:
     try:
         raw = complete_with_retry(backend, system, user)
     except LLMError as e:
         raise ScaffoldError(stage, str(e)) from e
     code = strip_fences(raw)
-    _validate_python(stage, code, raw)
+    _validate_python(stage, code, raw, filename)
     return code
 
 
@@ -198,6 +262,20 @@ def _plan_modules(paper: Paper, backend: Backend, body: str, analysis: dict,
         if not isinstance(m, dict) or not str(m.get("filename", "")).endswith(".py"):
             raise ScaffoldError("plan", f"bad module entry: {m!r}", raw=json.dumps(plan))
         m["filename"] = Path(str(m["filename"])).name  # never allow directory components
+    # Directory stripping above can make two distinct planned paths collide on the same
+    # filename, silently overwriting one in _build_stub_files. Also guard against
+    # collisions with the fixed files write_project always creates alongside modules.
+    seen: dict[str, int] = {}
+    for m in modules:
+        seen[m["filename"]] = seen.get(m["filename"], 0) + 1
+    duplicates = sorted(name for name, count in seen.items() if count > 1)
+    reserved = sorted(name for name in seen if name in ("__init__.py", "tracking.py"))
+    if duplicates or reserved:
+        problems = [f"{name!r} (used {seen[name]}x)" for name in duplicates]
+        problems += [f"{name!r} (reserved, always created by paperdigest)" for name in reserved]
+        raise ScaffoldError(
+            "plan", f"module plan has filename collisions: {', '.join(problems)}", raw=json.dumps(plan)
+        )
     return modules
 
 
@@ -222,6 +300,7 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
             f"RESPONSIBILITY: {m.get('responsibility', '')}\n"
             "PUBLIC API:\n" + "\n".join(f"- {sig}" for sig in m.get("api", []))
             + f"\n\n{analysis_ctx}\n\nPAPER TITLE: {paper.title}\n\nABSTRACT: {paper.abstract}",
+            filename=f"src/{pkg}/{m['filename']}",
         )
         files[f"src/{pkg}/{m['filename']}"] = code
 
@@ -229,6 +308,7 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
     files["tests/test_smoke.py"] = _stage_python(
         backend, "smoke-test", _SMOKE_TEST_SYSTEM,
         f"PACKAGE: {pkg} (import as `from {pkg} import <module>`)\n\n{analysis_ctx}",
+        filename="tests/test_smoke.py",
     )
     files["__analysis_ctx__"] = analysis_ctx  # consumed and removed by build_scaffold
     return files
@@ -246,8 +326,8 @@ def build_scaffold(paper: Paper, backend: Backend, max_chars: int,
         f"PACKAGE: {pkg}\n\n{analysis_ctx}",
         required=("train_py", "evaluate_py", "base_yaml", "smoke_yaml", "smoke_readme"),
     )
-    for key in ("train_py", "evaluate_py"):
-        _validate_python("harness", str(harness[key]), raw=str(harness[key]))
+    for key, filename in (("train_py", "train.py"), ("evaluate_py", "evaluate.py")):
+        _validate_python("harness", str(harness[key]), raw=str(harness[key]), filename=filename)
     files["train.py"] = str(harness["train_py"])
     files["evaluate.py"] = str(harness["evaluate_py"])
     files["configs/base.yaml"] = str(harness["base_yaml"])

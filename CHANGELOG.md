@@ -1,0 +1,50 @@
+# Changelog
+
+## 0.3.0 — 2026-07-15
+
+Robustness and safety hardening.
+
+### Added
+- Safety scan of all LLM-generated Python in `scaffold`: imports of
+  `subprocess`/`socket`/`ctypes`/`urllib`/`requests` and friends, calls to
+  `eval`/`exec`/`compile`/`__import__`, and dangerous attribute calls
+  (`os.system`, `pickle.load`, `shutil.rmtree`, ...) abort the pipeline
+  loudly with filename and line numbers.
+- `--refresh` flag on `digest` and `scaffold` to re-fetch a paper, bypassing
+  the HTML cache.
+- CI now runs ruff lint, reports test coverage, and verifies the package
+  builds (sdist + wheel).
+
+### Changed
+- LLM calls have a 300 s request timeout (previously unbounded).
+- Responses truncated at the token limit now raise a clear error instead of
+  being silently written as complete notes.
+- Only transient errors (connection, timeout, rate limit, 5xx) are retried;
+  permanent errors fail immediately with the original cause preserved.
+- Module planning rejects duplicate filenames instead of silently
+  overwriting one generated module with another.
+- Scaffold debug dumps are written to the cache directory (keyed by paper id
+  and stage) instead of the current working directory.
+
+### Fixed
+- HTML cache writes are atomic; an interrupted fetch can no longer leave a
+  corrupt cache file that is served forever.
+- A failure partway through rendering removes the half-written paper folder
+  (existing glossary notes are never touched).
+- Mermaid fence sanitization and validation now handle CRLF line endings and
+  trailing whitespace instead of silently skipping those blocks.
+- Concurrent runs against the same paper report a clean error instead of a
+  traceback.
+
+## 0.2.0 — 2026-07-12
+
+- Mermaid diagrams by default with sanitizer and optional node-based
+  validation; `--diagram` option.
+- JSON-mode structured output with trailing-junk-tolerant parsing.
+- Prompt-echo rejection in generated scaffold code.
+
+## 0.1.0 — 2026-07-11
+
+- Initial release: `digest` (arXiv paper to plain-English Obsidian notes)
+  and `scaffold` (paper to git-initialized research project skeleton),
+  local-first with optional Anthropic/OpenAI backends.

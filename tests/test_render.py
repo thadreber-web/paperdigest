@@ -79,3 +79,30 @@ def test_force_still_never_touches_glossary(tmp_path):
     gnote.write_text("MY EDITS")
     render_digest(_digest(), tmp_path, force=True)
     assert gnote.read_text() == "MY EDITS"
+
+
+def test_render_rolls_back_paper_folder_on_partial_write_failure(tmp_path, monkeypatch):
+    # A pre-existing glossary note must survive an aborted run untouched.
+    gdir = tmp_path / "Glossary"
+    gdir.mkdir(parents=True)
+    (gdir / "softmax.md").write_text("MY HAND-WRITTEN NOTE")
+
+    from pathlib import Path
+
+    real_write_text = Path.write_text
+    calls = []
+
+    def flaky_write_text(self, *args, **kwargs):
+        calls.append(self)
+        if self.name == "01 Self-Attention.md":
+            raise OSError("disk full (simulated)")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+
+    folder = tmp_path / "Papers" / "2017-tiny-transformers-explained"
+    with pytest.raises(OSError, match="disk full"):
+        render_digest(_digest(), tmp_path)
+
+    assert not folder.exists()  # rolled back: no half-written paper folder
+    assert (gdir / "softmax.md").read_text() == "MY HAND-WRITTEN NOTE"  # untouched

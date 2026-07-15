@@ -1,11 +1,11 @@
 import json
 
 import pytest
+from conftest import FakeBackend  # tests/ is on sys.path under pytest
 
-from paperdigest.digest import Digest, build_digest, _call_json
+from paperdigest.digest import Digest, _call_json, build_digest
 from paperdigest.extract import Paper, Section
 from paperdigest.llm import LLMError
-from conftest import FakeBackend  # tests/ is on sys.path under pytest
 
 
 @pytest.fixture

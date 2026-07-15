@@ -64,3 +64,23 @@ def test_fetch_reads_cache_without_network(tmp_path):
         raise AssertionError("network should not be hit")
 
     assert fetch_html("1706.03762", tmp_path, client=_client(handler)) == "cached!"
+
+
+def test_fetch_refresh_bypasses_cache(tmp_path):
+    (tmp_path / "1706.03762.html").write_text("stale cache")
+
+    def handler(request):
+        return httpx.Response(200, text='<h1 class="ltx_title">Fresh</h1>')
+
+    html = fetch_html("1706.03762", tmp_path, client=_client(handler), refresh=True)
+    assert html == '<h1 class="ltx_title">Fresh</h1>'
+    assert (tmp_path / "1706.03762.html").read_text() == html
+
+
+def test_fetch_cache_write_leaves_no_leftover_temp_file(tmp_path):
+    def handler(request):
+        return httpx.Response(200, text='<h1 class="ltx_title">Hi</h1>')
+
+    fetch_html("1706.03762", tmp_path, client=_client(handler))
+    names = [p.name for p in tmp_path.iterdir()]
+    assert names == ["1706.03762.html"]
