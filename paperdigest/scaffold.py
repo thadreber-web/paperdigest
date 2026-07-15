@@ -12,7 +12,7 @@ from typing import Callable
 from . import templates
 from .digest import _paper_body
 from .extract import Paper
-from .llm import Backend, LLMError, complete_with_retry, strip_fences
+from .llm import Backend, LLMError, complete_with_retry, repair_json, strip_fences
 from .render import OutputExistsError, slugify
 
 
@@ -119,8 +119,8 @@ def project_folder(arxiv_id: str, title: str, dest: Path) -> Path:
 
 def _stage_json(backend: Backend, stage: str, system: str, user: str, required: tuple[str, ...]) -> dict:
     try:
-        # complete_with_retry only retries transport/SDK errors; bad *content* still
-        # fails this stage immediately (the spec's no-retry rule is about content).
+        # complete_with_retry only retries transport/SDK errors; bad *content* is handled
+        # below via a one-shot repair round-trip (mirrors digest._call_json).
         raw = complete_with_retry(backend, system, user, json_mode=True)
     except LLMError as e:
         raise ScaffoldError(stage, str(e)) from e
@@ -128,8 +128,14 @@ def _stage_json(backend: Backend, stage: str, system: str, user: str, required: 
         # raw_decode reads the first complete JSON value and ignores trailing junk
         # (small local models sometimes leak a stray fence character after the JSON)
         data, _ = json.JSONDecoder().raw_decode(strip_fences(raw))
-    except json.JSONDecodeError as e:
-        raise ScaffoldError(stage, f"model returned invalid JSON: {e}", raw=raw) from e
+    except json.JSONDecodeError:
+        try:
+            repaired = repair_json(backend, raw)
+            data, _ = json.JSONDecoder().raw_decode(strip_fences(repaired))
+        except (LLMError, json.JSONDecodeError) as e:
+            raise ScaffoldError(
+                stage, f"model returned unparseable JSON even after a repair attempt: {e}", raw=raw
+            ) from e
     if not isinstance(data, dict):
         raise ScaffoldError(stage, f"expected a JSON object, got {type(data).__name__}", raw=raw)
     missing = [k for k in required if k not in data]

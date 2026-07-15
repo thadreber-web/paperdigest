@@ -29,19 +29,20 @@ class Backend(Protocol):
 
 
 class AnthropicBackend:
-    def __init__(self, model: str):
+    def __init__(self, model: str, max_tokens: int = 8192):
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise LLMError("ANTHROPIC_API_KEY is not set")
         import anthropic
 
         self.model = model
+        self.max_tokens = max_tokens
         self._client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT)
 
     def complete(self, system: str, user: str, json_mode: bool = False) -> str:
         # Anthropic has no response_format switch; the prompts already demand JSON.
         resp = self._client.messages.create(
             model=self.model,
-            max_tokens=8192,
+            max_tokens=self.max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -51,7 +52,7 @@ class AnthropicBackend:
 
 
 class OpenAICompatibleBackend:
-    def __init__(self, model: str, base_url: str | None = None):
+    def __init__(self, model: str, base_url: str | None = None, max_tokens: int = 8192):
         api_key = os.environ.get("OPENAI_API_KEY")
         if base_url is None and not api_key:
             raise LLMError("OPENAI_API_KEY is not set (or pass --base-url for a local server)")
@@ -59,6 +60,7 @@ class OpenAICompatibleBackend:
 
         self.model = model
         self.base_url = base_url
+        self.max_tokens = max_tokens
         self._client = openai.OpenAI(
             base_url=base_url, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT
         )
@@ -77,12 +79,15 @@ class OpenAICompatibleBackend:
                     model=self.model,
                     messages=messages,
                     response_format={"type": "json_object"},
+                    max_tokens=self.max_tokens,
                 )
                 return self._extract_content(resp)
             except openai.BadRequestError:
                 # server build doesn't support response_format — degrade for the rest of the run
                 self._json_mode_unsupported = True
-        resp = self._client.chat.completions.create(model=self.model, messages=messages)
+        resp = self._client.chat.completions.create(
+            model=self.model, messages=messages, max_tokens=self.max_tokens
+        )
         return self._extract_content(resp)
 
     @staticmethod
@@ -93,13 +98,15 @@ class OpenAICompatibleBackend:
         return choice.message.content or ""
 
 
-def make_backend(backend: str, model: str, base_url: str | None = None) -> Backend:
+def make_backend(
+    backend: str, model: str, base_url: str | None = None, max_tokens: int = 8192
+) -> Backend:
     if backend == "local":
-        return OpenAICompatibleBackend(model, base_url or LOCAL_BASE_URL)
+        return OpenAICompatibleBackend(model, base_url or LOCAL_BASE_URL, max_tokens)
     if backend == "anthropic":
-        return AnthropicBackend(model)
+        return AnthropicBackend(model, max_tokens)
     if backend == "openai":
-        return OpenAICompatibleBackend(model, base_url)
+        return OpenAICompatibleBackend(model, base_url, max_tokens)
     raise LLMError(f"unknown backend: {backend!r}")
 
 
@@ -147,3 +154,13 @@ def complete_with_retry(
             if attempt < retries:
                 time.sleep(2**attempt)
     raise LLMError(f"LLM call failed after {retries + 1} attempts: {last_error}") from last_error
+
+
+_REPAIR_SYSTEM = (
+    "The user message was supposed to be valid JSON but is not. Return ONLY the corrected JSON, nothing else."
+)
+
+
+def repair_json(backend: Backend, raw: str) -> str:
+    """One-shot repair round-trip: ask the model to fix JSON it just produced but that failed to parse."""
+    return complete_with_retry(backend, _REPAIR_SYSTEM, raw, json_mode=True)

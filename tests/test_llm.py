@@ -129,6 +129,32 @@ def test_openai_backend_omits_response_format_by_default():
     assert "response_format" not in stub.kwargs_seen[0]
 
 
+def test_openai_backend_sends_configured_max_tokens():
+    stub = _StubCompletions()
+    backend = OpenAICompatibleBackend("m", base_url="http://localhost:9999/v1", max_tokens=2048)
+    backend._client = SimpleNamespace(chat=SimpleNamespace(completions=stub))
+    backend.complete("s", "u")
+    assert stub.kwargs_seen[0]["max_tokens"] == 2048
+
+
+def test_anthropic_backend_sends_configured_max_tokens(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    backend = AnthropicBackend("claude-sonnet-5", max_tokens=2048)
+
+    class _Messages:
+        def create(self, **kwargs):
+            self.kwargs_seen = kwargs
+            return SimpleNamespace(
+                stop_reason="end_turn",
+                content=[SimpleNamespace(type="text", text="ok")],
+            )
+
+    stub = _Messages()
+    backend._client = SimpleNamespace(messages=stub)
+    backend.complete("s", "u")
+    assert stub.kwargs_seen["max_tokens"] == 2048
+
+
 def test_openai_backend_falls_back_when_server_rejects_response_format():
     stub = _StubCompletions(reject_response_format=True)
     backend = _openai_backend(stub)
