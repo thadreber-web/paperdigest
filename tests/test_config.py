@@ -29,6 +29,14 @@ def test_toml_file_overrides_defaults(tmp_path):
     assert cfg.level == "beginner"
 
 
+def test_tilde_paths_are_expanded(tmp_path):
+    f = tmp_path / "config.toml"
+    f.write_text('vault = "~/vault"\ncache_dir = "~/.cache/pd"\n')
+    cfg = load_config(f)
+    assert cfg.vault == Path.home() / "vault"
+    assert cfg.cache_dir == Path.home() / ".cache" / "pd"
+
+
 def test_kwargs_override_toml_and_none_is_ignored(tmp_path):
     f = tmp_path / "config.toml"
     f.write_text('level = "beginner"\n')
