@@ -37,7 +37,7 @@ def load_config(path: Path | None = None, **overrides) -> Config:
     merged = {**data, **{k: v for k, v in overrides.items() if v is not None}}
     for key in ("vault", "cache_dir"):
         if key in merged:
-            merged[key] = Path(merged[key])
+            merged[key] = Path(merged[key]).expanduser()
     cfg = replace(Config(), **merged)
     if cfg.level not in LEVELS:
         raise ValueError(f"level must be one of {LEVELS}, got {cfg.level!r}")
