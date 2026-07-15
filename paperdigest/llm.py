@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 import re
 import time
-from typing import Protocol
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, Protocol, TypeVar
 
 
 class LLMError(Exception):
@@ -164,3 +165,30 @@ _REPAIR_SYSTEM = (
 def repair_json(backend: Backend, raw: str) -> str:
     """One-shot repair round-trip: ask the model to fix JSON it just produced but that failed to parse."""
     return complete_with_retry(backend, _REPAIR_SYSTEM, raw, json_mode=True)
+
+
+T = TypeVar("T")
+R = TypeVar("R")
+
+
+def run_tasks(items: list[T], fn: Callable[[T], R], workers: int = 1) -> list[R]:
+    """Run fn(item) for each item, returning results in the same order as items.
+
+    workers <= 1 runs serially (safest for a single local llama.cpp server, and
+    deterministic for tests). workers > 1 uses a small bounded thread pool — fine for
+    cloud backends, whose calls are independent network requests. On the first
+    exception, outstanding work is cancelled and the exception propagates immediately;
+    nothing is swallowed.
+    """
+    if workers <= 1:
+        return [fn(item) for item in items]
+
+    results: list[R] = [None] * len(items)  # type: ignore[list-item]
+    executor = ThreadPoolExecutor(max_workers=workers)
+    try:
+        futures = {executor.submit(fn, item): idx for idx, item in enumerate(items)}
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()  # re-raises the worker's exception here
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+    return results

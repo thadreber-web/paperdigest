@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Callable
 
 import typer
 from typer.core import TyperGroup
@@ -12,8 +13,8 @@ try:
 except ImportError:  # typer >=0.16 vendors click internally as typer._click
     from typer._click.exceptions import UsageError
 
+from . import __version__, extract, fetch, render
 from . import digest as digest_mod
-from . import extract, fetch, render
 from . import scaffold as scaffold_mod
 from .config import Config, load_config
 from .extract import Paper
@@ -33,16 +34,37 @@ class _DefaultDigestGroup(TyperGroup):
 app = typer.Typer(add_completion=False, cls=_DefaultDigestGroup)
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        print(__version__)
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        None, "--version", callback=_version_callback, is_eager=True, help="show version and exit"
+    ),
+) -> None:
+    pass
+
+
 def _progress(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def _fetch_and_extract(cfg: Config, ref: str, refresh: bool) -> tuple[str, Paper]:
+def _no_progress(msg: str) -> None:
+    pass
+
+
+def _fetch_and_extract(
+    cfg: Config, ref: str, refresh: bool, progress: Callable[[str], None] = _progress
+) -> tuple[str, Paper]:
     arxiv_id = fetch.parse_arxiv_id(ref)
-    _progress(f"Fetching arXiv {arxiv_id}...")
+    progress(f"Fetching arXiv {arxiv_id}...")
     html = fetch.fetch_html(arxiv_id, cfg.cache_dir, refresh=refresh)
     paper = extract.extract_paper(html, arxiv_id)
-    _progress(f"Extracted '{paper.title}' ({len(paper.sections)} sections)")
+    progress(f"Extracted '{paper.title}' ({len(paper.sections)} sections)")
     return arxiv_id, paper
 
 
@@ -69,8 +91,13 @@ def digest(
     config: Path = typer.Option(Path("config.toml"), "--config"),
     force: bool = typer.Option(False, "--force", help="overwrite an existing paper folder"),
     refresh: bool = typer.Option(False, "--refresh", help="re-fetch the paper, ignoring the HTML cache"),
+    quiet: bool = typer.Option(False, "--quiet", help="suppress progress output"),
+    max_input_chars: int = typer.Option(None, "--max-input-chars", help="paper body char budget before trimming"),
+    max_tokens: int = typer.Option(None, "--max-tokens", help="LLM output token cap"),
+    cache_dir: Path = typer.Option(None, "--cache-dir", help="directory for cached fetched HTML"),
 ):
     """Digest an AI/ML paper into plain-English Obsidian notes."""
+    progress = _no_progress if quiet else _progress
     with _handle_common_errors():
         cfg = load_config(
             config,
@@ -80,15 +107,19 @@ def digest(
             base_url=base_url,
             vault=vault,
             diagram=diagram,
+            max_input_chars=max_input_chars,
+            max_tokens=max_tokens,
+            cache_dir=cache_dir,
         )
-        arxiv_id, paper = _fetch_and_extract(cfg, ref, refresh)
+        arxiv_id, paper = _fetch_and_extract(cfg, ref, refresh, progress)
         render.check_output_free(render.paper_folder(arxiv_id, paper.title, cfg.vault), force)
         llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url, cfg.max_tokens)
         gdir = cfg.vault / "Glossary"
         existing_terms = {p.stem.lower() for p in gdir.glob("*.md")} if gdir.exists() else set()
         d = digest_mod.build_digest(
             paper, llm_backend, cfg.level, existing_terms, cfg.max_input_chars,
-            progress=_progress, diagram=cfg.diagram,
+            progress=progress, diagram=cfg.diagram,
+            workers=4 if cfg.backend != "local" else 1,
         )
         folder = render.render_digest(d, cfg.vault, force=force)
         print(folder)
@@ -104,17 +135,33 @@ def scaffold(
     config: Path = typer.Option(Path("config.toml"), "--config"),
     force: bool = typer.Option(False, "--force", help="overwrite an existing project folder"),
     refresh: bool = typer.Option(False, "--refresh", help="re-fetch the paper, ignoring the HTML cache"),
+    quiet: bool = typer.Option(False, "--quiet", help="suppress progress output"),
+    max_input_chars: int = typer.Option(None, "--max-input-chars", help="paper body char budget before trimming"),
+    max_tokens: int = typer.Option(None, "--max-tokens", help="LLM output token cap"),
+    cache_dir: Path = typer.Option(None, "--cache-dir", help="directory for cached fetched HTML"),
 ):
     """Scaffold a git-initialized research project (structure, docs, stubs) from a paper."""
+    progress = _no_progress if quiet else _progress
     try:
         with _handle_common_errors():
-            cfg = load_config(config, backend=backend, model=model, base_url=base_url)
-            arxiv_id, paper = _fetch_and_extract(cfg, ref, refresh)
+            cfg = load_config(
+                config,
+                backend=backend,
+                model=model,
+                base_url=base_url,
+                max_input_chars=max_input_chars,
+                max_tokens=max_tokens,
+                cache_dir=cache_dir,
+            )
+            arxiv_id, paper = _fetch_and_extract(cfg, ref, refresh, progress)
             folder = scaffold_mod.project_folder(arxiv_id, paper.title, dest)
             render.check_output_free(folder, force)
             llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url, cfg.max_tokens)
-            project = scaffold_mod.build_scaffold(paper, llm_backend, cfg.max_input_chars, progress=_progress)
-            out = scaffold_mod.write_project(project, folder, force=force, progress=_progress)
+            project = scaffold_mod.build_scaffold(
+                paper, llm_backend, cfg.max_input_chars, progress=progress,
+                workers=4 if cfg.backend != "local" else 1,
+            )
+            out = scaffold_mod.write_project(project, folder, force=force, progress=progress)
             print(out)
     except scaffold_mod.ScaffoldError as e:
         safe_stage = e.stage.replace(":", "-").replace("/", "-")
@@ -124,6 +171,7 @@ def scaffold(
         bar = "=" * 64
         print(bar, file=sys.stderr)
         print("ERROR: scaffold stage failed — aborting, nothing was written", file=sys.stderr)
+        print(f"  paperdigest: {__version__}", file=sys.stderr)
         print(f"  stage:  {e.stage}", file=sys.stderr)
         print(f"  model:  {cfg.model}", file=sys.stderr)
         print(f"  server: {cfg.base_url or '(backend default)'}", file=sys.stderr)

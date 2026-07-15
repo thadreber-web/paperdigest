@@ -18,7 +18,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
       - run: python -m ruff check .
-      - run: python -m pytest -q --cov=paperdigest --cov-report=term-missing
+      - run: python -m pytest -q --cov=paperdigest --cov-report=term-missing --cov-fail-under=93
 
   build:
     runs-on: ubuntu-latest

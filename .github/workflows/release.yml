@@ -16,7 +16,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e '.[dev]'
       - run: python -m ruff check .
-      - run: python -m pytest -q --cov=paperdigest --cov-report=term-missing
+      - run: python -m pytest -q --cov=paperdigest --cov-report=term-missing --cov-fail-under=93
       - name: Check tag matches pyproject.toml version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"

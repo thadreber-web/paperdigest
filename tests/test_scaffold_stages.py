@@ -1,4 +1,5 @@
 import json
+import threading
 
 import pytest
 from conftest import FakeBackend
@@ -275,6 +276,83 @@ def test_build_scaffold_aborts_when_stub_contains_os_system():
         scaffold.build_scaffold(make_paper(), backend, max_chars=100_000, progress=lambda m: None)
     assert exc.value.stage == "module:model.py"
     assert "safety scan" in str(exc.value)
+
+
+class _OrderedThenKeyedBackend:
+    """First N calls are served in order from `ordered` (used for the serial analyze/plan
+    stages, which always run before the parallel module loop starts); calls after that
+    are looked up by a substring key in the user prompt — safe for concurrent module
+    stub generation, since each module's prompt names its own filename."""
+
+    model = "fake-model"
+
+    def __init__(self, ordered, keyed):
+        self.ordered = list(ordered)
+        self.keyed = keyed
+        self._lock = threading.Lock()
+        self.calls = []
+
+    def complete(self, system, user, json_mode=False):
+        with self._lock:
+            self.calls.append((system, user))
+            if self.ordered:
+                return self.ordered.pop(0)
+        for key, response in self.keyed.items():
+            if key in user:
+                return response
+        raise AssertionError(f"no keyed response matches: {user[:200]!r}")
+
+
+def _multi_module_plan(filenames):
+    return json.dumps(
+        {
+            "modules": [
+                {"filename": fn, "responsibility": f"do {fn}", "api": [f"def run_{i}():"], "dependencies": []}
+                for i, fn in enumerate(filenames)
+            ]
+        }
+    )
+
+
+def _stub_code(filename):
+    return (
+        f'def run():\n    """See paper §3. File {filename}."""\n'
+        f"    # TODO(paper §3): implement\n    raise NotImplementedError\n"
+    )
+
+
+def test_build_stub_files_parallel_returns_modules_in_order():
+    filenames = ["model.py", "data.py", "loss.py", "utils.py"]
+    backend = _OrderedThenKeyedBackend(
+        ordered=[ANALYZE, _multi_module_plan(filenames)],
+        keyed={
+            **{f"FILE TO WRITE: src/pkg/{fn}": _stub_code(fn) for fn in filenames},
+            "PACKAGE: pkg (import as": SMOKE_TEST,
+        },
+    )
+    files = scaffold._build_stub_files(
+        make_paper(), backend, "pkg", max_chars=100_000, progress=lambda m: None, workers=4,
+    )
+    ordered_keys = [k for k in files if k.startswith("src/pkg/")]
+    assert ordered_keys == [f"src/pkg/{fn}" for fn in filenames]
+    for fn in filenames:
+        assert files[f"src/pkg/{fn}"] == _stub_code(fn).strip()
+
+
+def test_build_stub_files_parallel_propagates_worker_error():
+    filenames = ["model.py", "data.py"]
+    backend = _OrderedThenKeyedBackend(
+        ordered=[ANALYZE, _multi_module_plan(filenames)],
+        keyed={
+            "FILE TO WRITE: src/pkg/model.py": _stub_code("model.py"),
+            "FILE TO WRITE: src/pkg/data.py": "def broken(:\n    pass",  # unparseable
+        },
+    )
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold._build_stub_files(
+            make_paper(), backend, "pkg", max_chars=100_000, progress=lambda m: None, workers=4,
+        )
+    assert exc.value.stage == "module:data.py"
 
 
 def test_plan_stage_rejects_duplicate_module_filenames():

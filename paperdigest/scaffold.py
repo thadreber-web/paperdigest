@@ -12,7 +12,7 @@ from typing import Callable
 from . import templates
 from .digest import _paper_body
 from .extract import Paper
-from .llm import Backend, LLMError, complete_with_retry, repair_json, strip_fences
+from .llm import Backend, LLMError, complete_with_retry, repair_json, run_tasks, strip_fences
 from .render import OutputExistsError, slugify
 
 
@@ -286,7 +286,7 @@ def _plan_modules(paper: Paper, backend: Backend, body: str, analysis: dict,
 
 
 def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
-                      progress: Callable[[str], None]) -> dict[str, str]:
+                      progress: Callable[[str], None], workers: int = 1) -> dict[str, str]:
     """Stages 1-3: analyze, plan, module stubs + smoke test. Returns files + stashes context."""
     body = _paper_body(paper, max_chars, progress)
     analysis = _analyze(paper, backend, body, progress)
@@ -296,11 +296,12 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
         f"PAPER ANALYSIS:\n{json.dumps(analysis, indent=2)}\n\n"
         f"MODULE PLAN:\n{json.dumps(modules, indent=2)}"
     )
-    files: dict[str, str] = {}
     total = len(modules)
-    for i, m in enumerate(modules, 1):
+
+    def _write_stub(numbered: tuple[int, dict]) -> str:
+        i, m = numbered
         progress(f"Stage 3/5: writing stub {i}/{total}: {m['filename']}")
-        code = _stage_python(
+        return _stage_python(
             backend, f"module:{m['filename']}", _MODULE_SYSTEM,
             f"FILE TO WRITE: src/{pkg}/{m['filename']}\n"
             f"RESPONSIBILITY: {m.get('responsibility', '')}\n"
@@ -308,7 +309,9 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
             + f"\n\n{analysis_ctx}\n\nPAPER TITLE: {paper.title}\n\nABSTRACT: {paper.abstract}",
             filename=f"src/{pkg}/{m['filename']}",
         )
-        files[f"src/{pkg}/{m['filename']}"] = code
+
+    codes = run_tasks(list(enumerate(modules, 1)), _write_stub, workers=workers)
+    files: dict[str, str] = {f"src/{pkg}/{m['filename']}": code for m, code in zip(modules, codes)}
 
     progress("Stage 3/5: writing tests/test_smoke.py")
     files["tests/test_smoke.py"] = _stage_python(
@@ -321,9 +324,9 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
 
 
 def build_scaffold(paper: Paper, backend: Backend, max_chars: int,
-                   progress: Callable[[str], None] = _default_progress) -> ScaffoldProject:
+                   progress: Callable[[str], None] = _default_progress, workers: int = 1) -> ScaffoldProject:
     pkg = package_name(paper.title)
-    files = _build_stub_files(paper, backend, pkg, max_chars, progress)
+    files = _build_stub_files(paper, backend, pkg, max_chars, progress, workers=workers)
     analysis_ctx = files.pop("__analysis_ctx__")
 
     progress("Stage 4/5: writing train/evaluate harness and configs...")
