@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- `--version` flag; the scaffold failure debug dump now includes the version.
+- `--quiet` flag on both commands to suppress progress output.
+- `--max-input-chars`, `--max-tokens`, and `--cache-dir` CLI overrides for
+  their config keys.
+- Concept explanations and module stubs are generated with up to 4 parallel
+  requests on cloud backends (local servers stay serial).
+- CI and the release workflow enforce a 93% test-coverage floor.
 - `max_tokens` config option: the LLM output-token cap (default 8192) is now
   set explicitly on both backends instead of hard-coded (Anthropic) or left
   to the server default (OpenAI-compatible).
@@ -17,6 +24,9 @@
 - `__version__` is now derived from package metadata instead of a hard-coded
   string that had drifted behind `pyproject.toml`.
 - `~` in `vault`/`cache_dir` config values is now expanded.
+- Concept-to-section matching is tiered (number-stripped exact, exact, then
+  longest-overlap containment), so short or numeric section titles can no
+  longer attach the wrong section's text to a concept.
 
 ## 0.3.0 — 2026-07-15
 
