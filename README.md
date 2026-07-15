@@ -71,13 +71,16 @@ You don't need a big model: scaffolding is tested live end-to-end on a 9B via
 llama.cpp (see `docs/smoke-test-scaffold.md`). JSON stages request structured
 output (`response_format: json_object`) from the server when supported, which
 is what makes small local models reliable here; generated code is validated
-(syntax + prompt-echo rejection) before anything is written.
+(syntax + prompt-echo rejection) before anything is written. Besides
+`log_run()` for JSONL experiment tracking, the scaffolded `tracking.py` has
+`get_logger()` for per-run log files under `logs/`.
 
 **A note on trust:** every generated `.py` file is still LLM output. Before writing it,
-paperdigest checks it parses and scans it for dangerous calls (`subprocess`, `socket`,
-`eval`/`exec`, `os.system`, `pickle.load`, `shutil.rmtree`, and similar) and aborts loudly
-if it finds any. That scan catches obviously hazardous patterns, not everything — read
-the scaffolded code before you run it.
+paperdigest checks it parses, rejects leftover prompt-echo lines, and scans it for
+dangerous calls (`subprocess`, `socket`, `eval`/`exec`, `os.system`, `pickle.load`,
+`shutil.rmtree`, and similar) plus networking/FFI imports (`urllib`, `requests`,
+`ctypes`, and similar) — aborting loudly if it finds any. That scan catches obviously
+hazardous patterns, not everything — read the scaffolded code before you run it.
 
 ## Cloud backends (optional, cost money)
 
@@ -86,6 +89,10 @@ the scaffolded code before you run it.
 | Local (default) | `--base-url http://localhost:8080/v1 --model local` | none |
 | OpenAI | `--backend openai --model gpt-5` | `OPENAI_API_KEY` |
 | Anthropic | `--backend anthropic --model claude-sonnet-5` | `ANTHROPIC_API_KEY` |
+
+Every LLM call is retried up to 2 more times with exponential backoff on
+transient errors (connection drops, timeouts, rate limits, 5xx); other errors
+fail immediately. Requests time out after 300s.
 
 ## Docker
 
@@ -111,7 +118,9 @@ never read from config files.
 v1 accepts arXiv URLs (`abs`/`pdf`/`html`) or bare IDs (`1706.03762`). It uses
 the paper's arXiv HTML rendering (ar5iv as fallback); papers with no HTML
 rendering fail with a clear message. Fetched papers are cached in
-`~/.cache/paperdigest/`.
+`~/.cache/paperdigest/` (configurable via `cache_dir` in `config.toml`); pass
+`--refresh` to re-fetch and overwrite the cached HTML, e.g. after arXiv
+publishes a revision.
 
 ## Development
 
