@@ -60,7 +60,7 @@ class _Flaky:
     def complete(self, system, user, json_mode=False):
         if self.remaining_failures > 0:
             self.remaining_failures -= 1
-            raise RuntimeError("transient")
+            raise httpx.ConnectError("transient")
         return "ok"
 
 
@@ -143,3 +143,72 @@ def test_openai_backend_falls_back_when_server_rejects_response_format():
     backend.complete("s", "u", json_mode=True)  # sticky: no second rejection round-trip
     assert len(stub.kwargs_seen) == 3
     assert "response_format" not in stub.kwargs_seen[-1]
+
+
+def test_openai_backend_raises_on_truncation():
+    class _TruncatedCompletions:
+        def create(self, **kwargs):
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="length",
+                        message=SimpleNamespace(content="partial..."),
+                    )
+                ]
+            )
+
+    backend = _openai_backend(_TruncatedCompletions())
+    with pytest.raises(LLMError, match="truncated"):
+        backend.complete("s", "u")
+
+
+def test_anthropic_backend_raises_on_truncation(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    backend = AnthropicBackend("claude-sonnet-5")
+
+    class _TruncatedMessages:
+        def create(self, **kwargs):
+            return SimpleNamespace(
+                stop_reason="max_tokens",
+                content=[SimpleNamespace(type="text", text="partial...")],
+            )
+
+    backend._client = SimpleNamespace(messages=_TruncatedMessages())
+    with pytest.raises(LLMError, match="truncated"):
+        backend.complete("s", "u")
+
+
+class _AlwaysFails:
+    model = "broken"
+
+    def __init__(self, exc):
+        self.exc = exc
+        self.attempts = 0
+
+    def complete(self, system, user, json_mode=False):
+        self.attempts += 1
+        raise self.exc
+
+
+def test_non_transient_error_fails_fast_without_retrying():
+    backend = _AlwaysFails(ValueError("bad request, will never work"))
+    with pytest.raises(LLMError, match="bad request"):
+        complete_with_retry(backend, "s", "u", retries=2)
+    assert backend.attempts == 1
+
+
+def test_truncation_error_fails_fast_without_retrying():
+    backend = _AlwaysFails(LLMError("truncated at max_tokens"))
+    with pytest.raises(LLMError, match="truncated"):
+        complete_with_retry(backend, "s", "u", retries=2)
+    assert backend.attempts == 1
+
+
+def test_transient_error_is_retried():
+    backend = _Flaky(2)
+    assert complete_with_retry(backend, "s", "u", retries=2) == "ok"
+
+
+def test_strip_fences_handles_crlf():
+    assert strip_fences('```json \r\n{"a": 1}\r\n```') == '{"a": 1}'
+    assert strip_fences('```\r\n{"a": 1}\r\n```  ') == '{"a": 1}'

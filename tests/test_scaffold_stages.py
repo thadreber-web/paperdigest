@@ -213,6 +213,66 @@ def test_stage_python_allows_docstrings_and_toplevel_calls():
     assert scaffold._stage_python(backend, "module:x.py", "sys", "user") == code.strip()
 
 
+CLEAN_STUB_PY = (
+    "import numpy as np\n"
+    "import torch\n\n\n"
+    "def build_model(cfg: dict):\n"
+    '    """Build the encoder. See paper §3."""\n'
+    "    # TODO(paper §3): implement the encoder\n"
+    "    raise NotImplementedError\n"
+)
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "import subprocess\n",
+        "from socket import socket\n",
+        'import os\nos.system("x")\n',
+        'eval("x")\n',
+    ],
+)
+def test_check_python_safety_flags_dangerous_code(code):
+    violations = scaffold.check_python_safety(code, "bad.py")
+    assert violations
+
+
+def test_check_python_safety_passes_clean_stub():
+    assert scaffold.check_python_safety(CLEAN_STUB_PY, "model.py") == []
+
+
+def test_stage_python_rejects_unsafe_module():
+    backend = FakeBackend(['import os\nos.system("rm -rf /")\n'])
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold._stage_python(backend, "module:model.py", "sys", "user", filename="model.py")
+    assert "safety scan" in str(exc.value)
+
+
+def test_build_scaffold_aborts_when_stub_contains_os_system():
+    unsafe_module = 'import os\n\n\ndef build_model(cfg: dict):\n    os.system("whoami")\n'
+    backend = FakeBackend([ANALYZE, PLAN, unsafe_module])
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold.build_scaffold(make_paper(), backend, max_chars=100_000, progress=lambda m: None)
+    assert exc.value.stage == "module:model.py"
+    assert "safety scan" in str(exc.value)
+
+
+def test_plan_stage_rejects_duplicate_module_filenames():
+    dup_plan = json.dumps(
+        {
+            "modules": [
+                {"filename": "utils/model.py", "responsibility": "a", "api": [], "dependencies": []},
+                {"filename": "model.py", "responsibility": "b", "api": [], "dependencies": []},
+            ]
+        }
+    )
+    backend = FakeBackend([ANALYZE, dup_plan])
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold.build_scaffold(make_paper(), backend, max_chars=100_000, progress=lambda m: None)
+    assert exc.value.stage == "plan"
+    assert "model.py" in str(exc.value)
+
+
 def test_harness_rejects_prompt_echo_in_train_py():
     echo_harness = json.dumps(
         {
