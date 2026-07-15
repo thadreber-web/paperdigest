@@ -36,7 +36,10 @@ output, and very small models fail cleanly with an `error:` message. Set
 
 Output lands in `<vault>/Papers/<year>-<title-slug>/` plus new term notes in
 `<vault>/Glossary/`. Re-running the same paper refuses to overwrite unless you
-pass `--force`. Glossary term notes are never overwritten.
+pass `--force`. Glossary term notes are never overwritten. Pass `--quiet` to
+suppress progress output, `--version` to print the installed version, or
+`--max-input-chars`/`--max-tokens`/`--cache-dir` to override those config
+keys per run (both `digest` and `scaffold` accept all of these).
 
 ### Diagrams: Mermaid or ASCII
 
@@ -94,7 +97,10 @@ hazardous patterns, not everything — read the scaffolded code before you run i
 Every LLM call is retried up to 2 more times with exponential backoff on
 transient errors (connection drops, timeouts, rate limits, 5xx); malformed
 JSON gets one repair round-trip; other errors fail immediately. Requests
-time out after 300s.
+time out after 300s. On cloud backends, concept and module-stub generation
+runs a few requests in parallel to cut wall-clock time; against a local
+server it stays serial, since a single llama.cpp instance generally can't
+service concurrent requests.
 
 ## Docker
 
