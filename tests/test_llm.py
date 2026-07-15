@@ -11,6 +11,7 @@ from paperdigest.llm import (
     OpenAICompatibleBackend,
     complete_with_retry,
     make_backend,
+    run_tasks,
     strip_fences,
 )
 
@@ -232,3 +233,39 @@ def test_transient_error_is_retried():
 def test_strip_fences_handles_crlf():
     assert strip_fences('```json \r\n{"a": 1}\r\n```') == '{"a": 1}'
     assert strip_fences('```\r\n{"a": 1}\r\n```  ') == '{"a": 1}'
+
+
+def test_run_tasks_serial_preserves_order():
+    results = run_tasks([1, 2, 3], lambda x: x * 10, workers=1)
+    assert results == [10, 20, 30]
+
+
+def test_run_tasks_serial_propagates_error():
+    def fn(x):
+        if x == 2:
+            raise LLMError("boom")
+        return x
+
+    with pytest.raises(LLMError, match="boom"):
+        run_tasks([1, 2, 3], fn, workers=1)
+
+
+def test_run_tasks_parallel_preserves_order_regardless_of_completion_order():
+    import time as time_mod
+
+    def fn(x):
+        time_mod.sleep(0.02 if x == 1 else 0)  # first item finishes last
+        return x * 10
+
+    results = run_tasks([1, 2, 3, 4], fn, workers=4)
+    assert results == [10, 20, 30, 40]
+
+
+def test_run_tasks_parallel_raises_on_first_failure():
+    def fn(x):
+        if x == 3:
+            raise LLMError("worker failed")
+        return x
+
+    with pytest.raises(LLMError, match="worker failed"):
+        run_tasks([1, 2, 3, 4], fn, workers=4)

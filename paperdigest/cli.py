@@ -119,6 +119,7 @@ def digest(
         d = digest_mod.build_digest(
             paper, llm_backend, cfg.level, existing_terms, cfg.max_input_chars,
             progress=progress, diagram=cfg.diagram,
+            workers=4 if cfg.backend != "local" else 1,
         )
         folder = render.render_digest(d, cfg.vault, force=force)
         print(folder)
@@ -156,7 +157,10 @@ def scaffold(
             folder = scaffold_mod.project_folder(arxiv_id, paper.title, dest)
             render.check_output_free(folder, force)
             llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url, cfg.max_tokens)
-            project = scaffold_mod.build_scaffold(paper, llm_backend, cfg.max_input_chars, progress=progress)
+            project = scaffold_mod.build_scaffold(
+                paper, llm_backend, cfg.max_input_chars, progress=progress,
+                workers=4 if cfg.backend != "local" else 1,
+            )
             out = scaffold_mod.write_project(project, folder, force=force, progress=progress)
             print(out)
     except scaffold_mod.ScaffoldError as e:

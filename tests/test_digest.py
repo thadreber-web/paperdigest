@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from conftest import FakeBackend  # tests/ is on sys.path under pytest
+from conftest import FakeBackend, KeyedFakeBackend  # tests/ is on sys.path under pytest
 
 from paperdigest.digest import Digest, _call_json, _find_section_text, build_digest
 from paperdigest.extract import Paper, Section
@@ -182,6 +182,53 @@ def test_find_section_text_numeric_only_title_matches_correct_section():
         url="https://example.com",
     )
     assert _find_section_text(p, "3", fallback="FALLBACK") == "three text"
+
+
+def test_build_digest_parallel_returns_concepts_in_order(paper):
+    paper.sections.append(Section("3 Results", "We report numbers."))
+    paper.sections.append(Section("4 Discussion", "We discuss limitations."))
+    titles = ["Self-Attention", "Layer Stacking", "Evaluation", "Limitations"]
+    sections = ["1 Introduction", "2 Method", "3 Results", "4 Discussion"]
+    outline = json.dumps(
+        {
+            "tldr": "t",
+            "why_it_matters": "w",
+            "concepts": [{"title": t, "section": s} for t, s in zip(titles, sections)],
+            "jargon": [],
+            "self_test": ["q1"],
+        }
+    )
+    backend = KeyedFakeBackend(
+        {
+            "READER LEVEL:": outline,
+            **{f"CONCEPT TO EXPLAIN: {t}": f"body for {t}" for t in titles},
+        }
+    )
+    d = build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None, workers=4)
+    assert [c.title for c in d.concepts] == titles
+    assert [c.body_md for c in d.concepts] == [f"body for {t}" for t in titles]
+
+
+def test_build_digest_parallel_propagates_error_from_one_worker(paper):
+    outline = json.dumps(
+        {
+            "tldr": "t",
+            "why_it_matters": "w",
+            "concepts": [{"title": "Good", "section": "1 Introduction"}, {"title": "Bad", "section": "2 Method"}],
+            "jargon": [],
+            "self_test": ["q1"],
+        }
+    )
+
+    class _BoomBackend(KeyedFakeBackend):
+        def complete(self, system, user, json_mode=False):
+            if "CONCEPT TO EXPLAIN: Bad" in user:
+                raise RuntimeError("worker exploded")
+            return super().complete(system, user, json_mode=json_mode)
+
+    backend = _BoomBackend({"READER LEVEL:": outline, "CONCEPT TO EXPLAIN: Good": "fine"})
+    with pytest.raises(LLMError, match="worker exploded"):
+        build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None, workers=4)
 
 
 def test_find_section_text_no_match_returns_fallback():

@@ -8,7 +8,7 @@ from typing import Callable
 
 from . import mermaid
 from .extract import Paper
-from .llm import Backend, LLMError, complete_with_retry, repair_json, strip_fences
+from .llm import Backend, LLMError, complete_with_retry, repair_json, run_tasks, strip_fences
 
 
 @dataclass
@@ -149,6 +149,7 @@ def build_digest(
     max_chars: int,
     progress: Callable[[str], None] = _default_progress,
     diagram: str = "mermaid",
+    workers: int = 1,
 ) -> Digest:
     if level not in LEVEL_GUIDANCE:
         raise ValueError(f"level must be one of {tuple(LEVEL_GUIDANCE)}, got {level!r}")
@@ -169,11 +170,13 @@ def build_digest(
         if key not in outline:
             raise LLMError(f"outline response is missing the {key!r} field")
 
-    concepts: list[ConceptNote] = []
     total = len(outline["concepts"])
-    for i, c in enumerate(outline["concepts"], 1):
+    for c in outline["concepts"]:
         if "title" not in c:
             raise LLMError(f"outline concept entry is missing 'title': {c!r}")
+
+    def _explain(numbered: tuple[int, dict]) -> ConceptNote:
+        i, c = numbered
         title = c["title"]
         section = c.get("section", "")
         progress(f"Explaining concept {i}/{total}: {title}")
@@ -190,7 +193,9 @@ def build_digest(
             for block in mermaid.mermaid_blocks(md):
                 if mermaid.validate(block) is False:  # None = no local parser; skip silently
                     progress(f"Warning: mermaid diagram in '{title}' failed parse validation; kept as-is.")
-        concepts.append(ConceptNote(title=title, body_md=md, section=section))
+        return ConceptNote(title=title, body_md=md, section=section)
+
+    concepts = run_tasks(list(enumerate(outline["concepts"], 1)), _explain, workers=workers)
 
     jargon = [str(t) for t in outline["jargon"]]
     new_terms = [t for t in jargon if t.lower() not in existing_terms]
