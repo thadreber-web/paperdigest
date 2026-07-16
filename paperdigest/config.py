@@ -25,6 +25,8 @@ class Config:
     max_input_chars: int = 400_000  # lower this for small-context local models
     max_tokens: int = 8192  # output token cap; lower for small-context local models
     cache_dir: Path = Path.home() / ".cache" / "paperdigest"
+    figures: bool = True  # download and explain figures; needs a vision-capable backend
+    max_figures: int = 8  # cap on figures explained per paper, by document order
 
 
 def load_config(path: Path | None = None, **overrides) -> Config:

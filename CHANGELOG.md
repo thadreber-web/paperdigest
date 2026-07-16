@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- Figures: paper figures are downloaded and explained by a vision-capable
+  model, with the image and explanation embedded in the matching concept
+  note. `--figures/--no-figures` and the `max_figures` config key (default
+  8) control it; backends without vision skip figures after one warning.
 - `--version` flag; the scaffold failure debug dump now includes the version.
 - `--quiet` flag on both commands to suppress progress output.
 - `--max-input-chars`, `--max-tokens`, and `--cache-dir` CLI overrides for

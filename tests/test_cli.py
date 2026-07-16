@@ -1,11 +1,15 @@
 import json
+from pathlib import Path
 
 from conftest import FakeBackend  # tests/ is on sys.path under pytest
 from typer.testing import CliRunner
 
 from paperdigest import cli
+from paperdigest.extract import Figure
 
 runner = CliRunner()
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 OUTLINE = json.dumps(
     {
@@ -25,6 +29,8 @@ def _fake_responses():
 
 def _patch(monkeypatch, fixture_html):
     monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None, refresh=False: fixture_html)
+    # fixture_html has one figure; keep unrelated tests offline by fetching none by default.
+    monkeypatch.setattr(cli.fetch, "fetch_figures", lambda *a, **k: {})
     monkeypatch.setattr(cli, "make_backend", lambda *a, **k: FakeBackend(_fake_responses()))
 
 
@@ -118,3 +124,65 @@ def test_max_input_chars_override_reaches_config(tmp_path, monkeypatch, fixture_
     )
     assert result.exit_code == 0, result.output
     assert seen["max_input_chars"] == 12345
+
+
+def test_no_figures_flag_skips_fetch(tmp_path, monkeypatch, fixture_html):
+    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None, refresh=False: fixture_html)
+
+    def boom(*a, **k):
+        raise AssertionError("fetch_figures should not be called when --no-figures is passed")
+
+    monkeypatch.setattr(cli.fetch, "fetch_figures", boom)
+    monkeypatch.setattr(cli, "make_backend", lambda *a, **k: FakeBackend(_fake_responses()))
+    result = runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path), "--no-figures"])
+    assert result.exit_code == 0, result.output
+
+
+def test_figures_enabled_fetches_and_passes_images_through(tmp_path, monkeypatch, fixture_html):
+    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None, refresh=False: fixture_html)
+    fig_dest = FIXTURES / "figure1.png"
+    fetch_calls = {}
+
+    def fake_fetch_figures(figures, arxiv_id, cache_dir, base_url, refresh=False):
+        fetch_calls["figures"] = figures
+        return {f.src: fig_dest for f in figures}
+
+    monkeypatch.setattr(cli.fetch, "fetch_figures", fake_fetch_figures)
+    backend = FakeBackend([OUTLINE, "Attention body.", "Figure explanation.", GLOSSARY])
+    monkeypatch.setattr(cli, "make_backend", lambda *a, **k: backend)
+    result = runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert len(fetch_calls["figures"]) == 1
+    # calls: 0=outline, 1=concept, 2=figure (carries the image), 3=glossary
+    assert backend.images_calls[2] == [fig_dest.read_bytes()]
+
+
+def test_max_figures_caps_fetched_figures(tmp_path, monkeypatch, fixture_html):
+    real_extract_paper = cli.extract.extract_paper
+
+    def patched_extract(html, arxiv_id):
+        paper = real_extract_paper(html, arxiv_id)
+        paper.figures = paper.figures + [
+            Figure(caption=f"Fig {i}", src=f"fig{i}.png", section=None) for i in range(2, 6)
+        ]
+        return paper
+
+    monkeypatch.setattr(cli.fetch, "fetch_html", lambda arxiv_id, cache_dir, client=None, refresh=False: fixture_html)
+    monkeypatch.setattr(cli.extract, "extract_paper", patched_extract)
+    fig_dest = FIXTURES / "figure1.png"
+    fetch_calls = {}
+
+    def fake_fetch_figures(figures, arxiv_id, cache_dir, base_url, refresh=False):
+        fetch_calls["figures"] = figures
+        return {figures[0].src: fig_dest} if figures else {}
+
+    monkeypatch.setattr(cli.fetch, "fetch_figures", fake_fetch_figures)
+    backend = FakeBackend([OUTLINE, "Attention body.", "Figure explanation.", GLOSSARY])
+    monkeypatch.setattr(cli, "make_backend", lambda *a, **k: backend)
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("max_figures = 2\n")
+    result = runner.invoke(
+        cli.app, ["1706.03762", "--vault", str(tmp_path), "--config", str(config_file)]
+    )
+    assert result.exit_code == 0, result.output
+    assert len(fetch_calls["figures"]) == 2

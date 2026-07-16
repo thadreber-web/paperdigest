@@ -55,6 +55,19 @@ and a warning names any note whose diagram still fails. No node? Validation is
 skipped silently — the worst case is one diagram rendering as an error box in
 Obsidian instead of a picture.
 
+### Figures
+
+By default, figures are downloaded from the paper and explained by a
+vision-capable model, with the image and its explanation embedded together
+in the matching concept note (or the overview, if unmatched). This needs a
+vision-capable backend — for local llama.cpp, serve with an `--mmproj`
+projector file. Backends without vision skip figures automatically after a
+warning on the first figure, and the rest of the digest completes normally.
+Pass `--no-figures` (or set `figures = false` in `config.toml`) to turn this
+off; it's also the budget option on cloud backends, where images are
+token-expensive. `max_figures` (default 8) caps how many figures per paper
+are explained, by document order.
+
 ## Scaffold a research project
 
 Turn a paper into a standalone, git-initialized project skeleton (Cookiecutter-DS-style
