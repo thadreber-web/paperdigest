@@ -100,6 +100,24 @@ def fetch_figures(
     return results
 
 
+def _url_sidecar_file(arxiv_id: str, cache_dir: Path) -> Path:
+    return cache_dir / f"{arxiv_id}.url"
+
+
+def html_base_url(arxiv_id: str, cache_dir: Path) -> str:
+    """Return the source URL fetch_html last succeeded with, for resolving relative figure src.
+
+    Falls back to the primary arXiv HTML URL template if the sidecar is missing
+    (e.g. pre-existing caches written before this sidecar existed).
+    """
+    sidecar = _url_sidecar_file(arxiv_id, cache_dir)
+    if sidecar.exists():
+        url = sidecar.read_text().strip()
+        if url:
+            return url
+    return _SOURCES[0].format(id=arxiv_id)
+
+
 def fetch_html(arxiv_id: str, cache_dir: Path, client: httpx.Client | None = None, *, refresh: bool = False) -> str:
     cache_file = cache_dir / f"{arxiv_id}.html"
     if not refresh and cache_file.exists():
@@ -116,6 +134,7 @@ def fetch_html(arxiv_id: str, cache_dir: Path, client: httpx.Client | None = Non
         if resp.status_code == 200 and "ltx_title" in resp.text:
             cache_dir.mkdir(parents=True, exist_ok=True)
             _write_cache_atomically(cache_file, resp.text)
+            _write_cache_atomically(_url_sidecar_file(arxiv_id, cache_dir), url)
             return resp.text
         errors.append(f"{url} -> HTTP {resp.status_code}")
     raise FetchError(

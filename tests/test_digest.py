@@ -1,11 +1,15 @@
 import json
+from pathlib import Path
 
 import pytest
 from conftest import FakeBackend, KeyedFakeBackend  # tests/ is on sys.path under pytest
 
-from paperdigest.digest import Digest, _call_json, _find_section_text, build_digest
-from paperdigest.extract import Paper, Section
-from paperdigest.llm import LLMError
+from paperdigest.digest import Digest, FigureNote, _call_json, _find_section_text, build_digest
+from paperdigest.extract import Figure, Paper, Section
+from paperdigest.llm import LLMError, VisionUnsupportedError
+
+FIXTURES = Path(__file__).parent / "fixtures"
+FIGURE_BYTES = (FIXTURES / "figure1.png").read_bytes()
 
 
 @pytest.fixture
@@ -229,6 +233,139 @@ def test_build_digest_parallel_propagates_error_from_one_worker(paper):
     backend = _BoomBackend({"READER LEVEL:": outline, "CONCEPT TO EXPLAIN: Good": "fine"})
     with pytest.raises(LLMError, match="worker exploded"):
         build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None, workers=4)
+
+
+def test_build_digest_figures_get_image_caption_tldr_and_concept_match(paper, tmp_path):
+    fig_path = tmp_path / "fig1.png"
+    fig_path.write_bytes(FIGURE_BYTES)
+    fig = Figure(caption="Fig 1: the architecture.", src="fig1.png", section="1 Introduction")
+    paper.figures = [fig]
+    backend = FakeBackend([OUTLINE, "Body about attention.", "Body about stacking.", "Figure explanation.", GLOSSARY])
+    d = build_digest(
+        paper, backend, "intermediate", set(), 400_000, progress=lambda m: None,
+        figure_paths={fig.src: fig_path},
+    )
+    assert len(d.figures) == 1
+    fnote = d.figures[0]
+    assert isinstance(fnote, FigureNote)
+    assert fnote.body_md == "Figure explanation."
+    assert fnote.image_path == fig_path
+    assert fnote.caption == fig.caption
+    assert fnote.concept_title == "Self-Attention"  # section "1 Introduction" matches that concept
+
+    figure_call_index = 3  # outline, concept1, concept2, figure
+    assert backend.images_calls[figure_call_index] == [FIGURE_BYTES]
+    assert backend.images_calls[0] is None  # outline: no images
+    assert backend.images_calls[1] is None  # concept calls: no images
+    figure_user = backend.calls[figure_call_index][1]
+    assert "Tiny Transformers Explained" in figure_user  # paper title
+    assert "Tiny transformers work." in figure_user  # tldr
+    assert "Fig 1: the architecture." in figure_user  # caption verbatim
+
+
+def test_build_digest_figure_unmatched_section_goes_to_overview(paper, tmp_path):
+    fig_path = tmp_path / "fig1.png"
+    fig_path.write_bytes(FIGURE_BYTES)
+    fig = Figure(caption="Fig 1", src="fig1.png", section="9 Nonexistent Section")
+    paper.figures = [fig]
+    backend = FakeBackend([OUTLINE, "c1", "c2", "Figure explanation.", GLOSSARY])
+    d = build_digest(
+        paper, backend, "intermediate", set(), 400_000, progress=lambda m: None,
+        figure_paths={fig.src: fig_path},
+    )
+    assert d.figures[0].concept_title is None
+
+
+def test_build_digest_no_figure_paths_skips_figure_step(paper, tmp_path):
+    fig = Figure(caption="Fig 1", src="fig1.png", section="1 Introduction")
+    paper.figures = [fig]
+    backend = FakeBackend([OUTLINE, "c1", "c2", GLOSSARY])
+    d = build_digest(paper, backend, "intermediate", set(), 400_000, progress=lambda m: None)
+    assert d.figures == []
+    assert len(backend.calls) == 4  # no figure call made
+
+
+class _VisionRejectingBackend:
+    model = "fake-model"
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+        self.images_calls = []
+
+    def complete(self, system, user, json_mode=False, images=None):
+        self.calls.append((system, user))
+        self.images_calls.append(images)
+        if images:
+            raise VisionUnsupportedError("backend rejected image content")
+        if not self.responses:
+            raise AssertionError("VisionRejectingBackend ran out of responses")
+        return self.responses.pop(0)
+
+
+def test_build_digest_vision_unsupported_skips_all_figures_with_one_warning(paper, tmp_path):
+    fig_path = tmp_path / "fig1.png"
+    fig_path.write_bytes(FIGURE_BYTES)
+    fig1 = Figure(caption="Fig 1", src="fig1.png", section="1 Introduction")
+    fig2 = Figure(caption="Fig 2", src="fig2.png", section="2 Method")
+    paper.figures = [fig1, fig2]
+    backend = _VisionRejectingBackend([OUTLINE, "c1", "c2", GLOSSARY])
+    warnings = []
+    d = build_digest(
+        paper, backend, "intermediate", set(), 400_000, progress=warnings.append,
+        figure_paths={fig1.src: fig_path, fig2.src: fig_path},
+    )
+    assert d.figures == []
+    vision_warnings = [w for w in warnings if "vision support" in w.lower()]
+    assert len(vision_warnings) == 1
+    assert "skipping 2 figures" in vision_warnings[0]
+    # digest still completes normally
+    assert d.tldr == "Tiny transformers work."
+
+
+class _ImgQueueBackend:
+    """Fake backend that answers image-bearing calls from a separate ordered queue,
+    where an entry may be an Exception instance to raise instead of a response string."""
+
+    model = "fake-model"
+
+    def __init__(self, non_image_responses, image_responses):
+        self.non_image_responses = list(non_image_responses)
+        self.image_responses = list(image_responses)
+        self.calls = []
+        self.images_calls = []
+
+    def complete(self, system, user, json_mode=False, images=None):
+        self.calls.append((system, user))
+        self.images_calls.append(images)
+        if images:
+            item = self.image_responses.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+        if not self.non_image_responses:
+            raise AssertionError("ImgQueueBackend ran out of non-image responses")
+        return self.non_image_responses.pop(0)
+
+
+def test_build_digest_single_figure_llmerror_skips_just_that_figure(paper, tmp_path):
+    fig_path = tmp_path / "fig1.png"
+    fig_path.write_bytes(FIGURE_BYTES)
+    fig1 = Figure(caption="Fig 1", src="fig1.png", section=None)
+    fig2 = Figure(caption="Fig 2", src="fig2.png", section=None)
+    fig3 = Figure(caption="Fig 3", src="fig3.png", section=None)
+    paper.figures = [fig1, fig2, fig3]
+    backend = _ImgQueueBackend(
+        [OUTLINE, "c1", "c2", GLOSSARY],
+        ["Note 1", LLMError("boom"), "Note 3"],
+    )
+    warnings = []
+    d = build_digest(
+        paper, backend, "intermediate", set(), 400_000, progress=warnings.append, workers=1,
+        figure_paths={fig1.src: fig_path, fig2.src: fig_path, fig3.src: fig_path},
+    )
+    assert [f.caption for f in d.figures] == ["Fig 1", "Fig 3"]
+    assert any("figure 2" in w.lower() and "skip" in w.lower() for w in warnings)
 
 
 def test_find_section_text_no_match_returns_fallback():

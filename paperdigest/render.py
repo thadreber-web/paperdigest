@@ -71,12 +71,27 @@ def render_digest(digest: Digest, vault: Path, force: bool = False) -> Path:
             overview += "\n".join(f"{i}. {q}" for i, q in enumerate(digest.self_test, 1)) + "\n"
         (folder / "00 Overview.md").write_text(overview)
 
+        concept_bodies: dict[str, str] = {}
+        overview_extra = ""
+        for i, fnote in enumerate(digest.figures, 1):
+            dest_name = f"fig{i}{fnote.image_path.suffix.lower()}"
+            shutil.copyfile(fnote.image_path, folder / dest_name)
+            block = f"\n\n## Figure: {fnote.caption}\n\n![[{dest_name}]]\n\n{fnote.body_md}\n"
+            if fnote.concept_title is not None:
+                concept_bodies[fnote.concept_title] = concept_bodies.get(fnote.concept_title, "") + block
+            else:
+                overview_extra += block
+
         for name, concept in zip(concept_names, digest.concepts):
             note = fm + f"# {note_name(concept.title)}\n\n"
             if concept.section:
                 note += f"*Source: {concept.section} of [{digest.paper.title}]({digest.paper.url})*\n\n"
             note += concept.body_md + "\n"
+            note += concept_bodies.get(concept.title, "")
             (folder / f"{name}.md").write_text(note)
+
+        if overview_extra:
+            (folder / "00 Overview.md").write_text((folder / "00 Overview.md").read_text() + overview_extra)
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)  # never leave a half-written paper folder
         raise

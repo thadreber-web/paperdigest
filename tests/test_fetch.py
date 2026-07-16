@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from paperdigest.extract import Figure
-from paperdigest.fetch import FetchError, fetch_figures, fetch_html, parse_arxiv_id
+from paperdigest.fetch import FetchError, fetch_figures, fetch_html, html_base_url, parse_arxiv_id
 
 
 @pytest.mark.parametrize(
@@ -83,8 +83,38 @@ def test_fetch_cache_write_leaves_no_leftover_temp_file(tmp_path):
         return httpx.Response(200, text='<h1 class="ltx_title">Hi</h1>')
 
     fetch_html("1706.03762", tmp_path, client=_client(handler))
-    names = [p.name for p in tmp_path.iterdir()]
-    assert names == ["1706.03762.html"]
+    names = sorted(p.name for p in tmp_path.iterdir())
+    assert names == ["1706.03762.html", "1706.03762.url"]
+
+
+def test_fetch_html_writes_url_sidecar(tmp_path):
+    def handler(request):
+        return httpx.Response(200, text='<h1 class="ltx_title">Hi</h1>')
+
+    fetch_html("1706.03762", tmp_path, client=_client(handler))
+    sidecar = tmp_path / "1706.03762.url"
+    assert sidecar.exists()
+    assert sidecar.read_text().strip() == "https://arxiv.org/html/1706.03762"
+
+
+def test_fetch_html_writes_url_sidecar_for_fallback_source(tmp_path):
+    def handler(request):
+        if "ar5iv" in str(request.url):
+            return httpx.Response(200, text='<h1 class="ltx_title">Hi</h1>')
+        return httpx.Response(404)
+
+    fetch_html("1706.03762", tmp_path, client=_client(handler))
+    sidecar = tmp_path / "1706.03762.url"
+    assert "ar5iv" in sidecar.read_text()
+
+
+def test_html_base_url_reads_sidecar(tmp_path):
+    (tmp_path / "1706.03762.url").write_text("https://ar5iv.labs.arxiv.org/html/1706.03762")
+    assert html_base_url("1706.03762", tmp_path) == "https://ar5iv.labs.arxiv.org/html/1706.03762"
+
+
+def test_html_base_url_falls_back_when_sidecar_missing(tmp_path):
+    assert html_base_url("1706.03762", tmp_path) == "https://arxiv.org/html/1706.03762"
 
 
 def test_fetch_figures_writes_to_cache_path(tmp_path):
