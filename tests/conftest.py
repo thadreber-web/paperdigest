@@ -20,10 +20,14 @@ class FakeBackend:
         self.responses = list(responses)
         self.calls = []
         self.json_modes = []
+        self.images_calls = []
 
-    def complete(self, system: str, user: str, json_mode: bool = False) -> str:
+    def complete(
+        self, system: str, user: str, json_mode: bool = False, images: list[bytes] | None = None
+    ) -> str:
         self.calls.append((system, user))
         self.json_modes.append(json_mode)
+        self.images_calls.append(images)
         if not self.responses:
             raise AssertionError("FakeBackend ran out of responses")
         return self.responses.pop(0)
@@ -40,10 +44,14 @@ class KeyedFakeBackend:
         self.default = default
         self._lock = threading.Lock()
         self.calls = []
+        self.images_calls = []
 
-    def complete(self, system: str, user: str, json_mode: bool = False) -> str:
+    def complete(
+        self, system: str, user: str, json_mode: bool = False, images: list[bytes] | None = None
+    ) -> str:
         with self._lock:
             self.calls.append((system, user))
+            self.images_calls.append(images)
         for key, response in self.keyed_responses.items():
             if key in user:
                 return response
