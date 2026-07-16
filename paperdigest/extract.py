@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from bs4 import BeautifulSoup
 
@@ -16,12 +16,48 @@ class Section:
 
 
 @dataclass
+class Figure:
+    caption: str
+    src: str
+    section: str | None
+
+
+@dataclass
 class Paper:
     arxiv_id: str
     title: str
     abstract: str
     sections: list[Section]
     url: str
+    figures: list[Figure] = field(default_factory=list)
+
+
+_RASTER_EXTS = (".png", ".jpg", ".jpeg")
+
+
+def _extract_figures(soup: BeautifulSoup) -> list[Figure]:
+    figures: list[Figure] = []
+    for fig in soup.find_all("figure", class_="ltx_figure"):
+        img = fig.find("img")
+        if img is None:
+            continue
+        src = img.get("src", "")
+        if not src.lower().endswith(_RASTER_EXTS):
+            continue
+        caption_el = fig.find(class_="ltx_caption")
+        if caption_el is None:
+            continue
+        caption = caption_el.get_text(" ", strip=True)
+        if not caption:
+            continue
+        section = None
+        sec_el = fig.find_parent("section", class_="ltx_section")
+        if sec_el is not None:
+            heading = sec_el.find(["h2", "h3"])
+            if heading is not None:
+                section = heading.get_text(" ", strip=True)
+        figures.append(Figure(caption=caption, src=src, section=section))
+    return figures
 
 
 def _mathify(soup: BeautifulSoup) -> None:
@@ -47,6 +83,8 @@ def extract_paper(html: str, arxiv_id: str) -> Paper:
             heading.extract()
         abstract = abstract_el.get_text(" ", strip=True)
 
+    figures = _extract_figures(soup)
+
     sections: list[Section] = []
     for sec in soup.find_all("section", class_="ltx_section"):
         heading = sec.find(["h2", "h3"])
@@ -68,4 +106,5 @@ def extract_paper(html: str, arxiv_id: str) -> Paper:
         abstract=abstract,
         sections=sections,
         url=f"https://arxiv.org/abs/{arxiv_id}",
+        figures=figures,
     )

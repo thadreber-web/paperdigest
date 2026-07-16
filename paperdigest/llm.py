@@ -11,6 +11,10 @@ class LLMError(Exception):
     pass
 
 
+class VisionUnsupportedError(LLMError):
+    """Raised when a backend/server rejects a call that included images."""
+
+
 LOCAL_BASE_URL = "http://localhost:8080/v1"  # llama.cpp server default
 REQUEST_TIMEOUT = 300.0  # local models are slow — a smoke test showed multi-minute stages
 
@@ -26,7 +30,20 @@ def strip_fences(text: str) -> str:
 class Backend(Protocol):
     model: str
 
-    def complete(self, system: str, user: str, json_mode: bool = False) -> str: ...
+    def complete(
+        self,
+        system: str,
+        user: str,
+        json_mode: bool = False,
+        images: list[bytes] | None = None,
+    ) -> str: ...
+
+
+def _image_media_type(image: bytes) -> str:
+    """Sniff JPEG vs PNG from magic bytes; default to PNG."""
+    if image[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    return "image/png"
 
 
 class AnthropicBackend:
@@ -39,14 +56,45 @@ class AnthropicBackend:
         self.max_tokens = max_tokens
         self._client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT)
 
-    def complete(self, system: str, user: str, json_mode: bool = False) -> str:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        json_mode: bool = False,
+        images: list[bytes] | None = None,
+    ) -> str:
+        import base64
+
+        import anthropic
+
         # Anthropic has no response_format switch; the prompts already demand JSON.
-        resp = self._client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
+        if images:
+            content: list[dict] = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": _image_media_type(image),
+                        "data": base64.b64encode(image).decode("ascii"),
+                    },
+                }
+                for image in images
+            ]
+            content.append({"type": "text", "text": user})
+        else:
+            content = user
+
+        try:
+            resp = self._client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": content}],
+            )
+        except anthropic.BadRequestError as e:
+            if images:
+                raise VisionUnsupportedError(f"Anthropic rejected image content: {e}") from e
+            raise
         if getattr(resp, "stop_reason", None) == "max_tokens":
             raise LLMError("Anthropic response truncated at max_tokens")
         return "".join(block.text for block in resp.content if block.type == "text")
@@ -67,12 +115,31 @@ class OpenAICompatibleBackend:
         )
         self._json_mode_unsupported = False
 
-    def complete(self, system: str, user: str, json_mode: bool = False) -> str:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        json_mode: bool = False,
+        images: list[bytes] | None = None,
+    ) -> str:
+        import base64
+
         import openai
+
+        if images:
+            content: list[dict] | str = [{"type": "text", "text": user}]
+            for image in images:
+                mime = _image_media_type(image)
+                b64 = base64.b64encode(image).decode("ascii")
+                content.append(
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
+                )
+        else:
+            content = user
 
         messages = [
             {"role": "system", "content": system},
-            {"role": "user", "content": user},
+            {"role": "user", "content": content},
         ]
         if json_mode and not self._json_mode_unsupported:
             try:
@@ -86,9 +153,14 @@ class OpenAICompatibleBackend:
             except openai.BadRequestError:
                 # server build doesn't support response_format — degrade for the rest of the run
                 self._json_mode_unsupported = True
-        resp = self._client.chat.completions.create(
-            model=self.model, messages=messages, max_tokens=self.max_tokens
-        )
+        try:
+            resp = self._client.chat.completions.create(
+                model=self.model, messages=messages, max_tokens=self.max_tokens
+            )
+        except openai.BadRequestError as e:
+            if images:
+                raise VisionUnsupportedError(f"backend rejected image content: {e}") from e
+            raise
         return self._extract_content(resp)
 
     @staticmethod
@@ -142,12 +214,24 @@ def _is_transient(e: Exception) -> bool:
 
 
 def complete_with_retry(
-    backend: Backend, system: str, user: str, retries: int = 2, json_mode: bool = False
+    backend: Backend,
+    system: str,
+    user: str,
+    retries: int = 2,
+    json_mode: bool = False,
+    images: list[bytes] | None = None,
 ) -> str:
     last_error: Exception | None = None
     for attempt in range(retries + 1):
         try:
+            # images kwarg passed only when actually used, so callers with a minimal
+            # (pre-vision) complete(self, system, user, json_mode=False) signature —
+            # e.g. test fakes outside this module — keep working unchanged.
+            if images is not None:
+                return backend.complete(system, user, json_mode=json_mode, images=images)
             return backend.complete(system, user, json_mode=json_mode)
+        except VisionUnsupportedError:
+            raise  # not transient, and callers need the specific type to skip figures
         except Exception as e:  # noqa: BLE001 — SDK exception types vary per backend
             last_error = e
             if not _is_transient(e):

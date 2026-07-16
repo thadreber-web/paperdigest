@@ -76,3 +76,19 @@ def test_max_tokens_defaults_and_overrides(tmp_path):
     f = tmp_path / "config.toml"
     f.write_text("max_tokens = 2048\n")
     assert load_config(f).max_tokens == 2048
+
+
+def test_figures_defaults_and_overrides(tmp_path):
+    assert load_config(None).figures is True
+    f = tmp_path / "config.toml"
+    f.write_text("figures = false\n")
+    assert load_config(f).figures is False
+    assert load_config(None, figures=False).figures is False
+
+
+def test_max_figures_defaults_and_overrides(tmp_path):
+    assert load_config(None).max_figures == 8
+    f = tmp_path / "config.toml"
+    f.write_text("max_figures = 3\n")
+    assert load_config(f).max_figures == 3
+    assert load_config(None, max_figures=2).max_figures == 2

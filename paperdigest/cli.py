@@ -88,6 +88,10 @@ def digest(
     base_url: str = typer.Option(None, "--base-url", help="local server URL (default http://localhost:8080/v1)"),
     vault: Path = typer.Option(None, "--vault", help="Obsidian vault root (notes go to Papers/ and Glossary/)"),
     diagram: str = typer.Option(None, "--diagram", help="mermaid (default) | ascii"),
+    figures: bool = typer.Option(
+        None, "--figures/--no-figures",
+        help="download and explain paper figures; needs a vision-capable backend (default from config, on)",
+    ),
     config: Path = typer.Option(Path("config.toml"), "--config"),
     force: bool = typer.Option(False, "--force", help="overwrite an existing paper folder"),
     refresh: bool = typer.Option(False, "--refresh", help="re-fetch the paper, ignoring the HTML cache"),
@@ -107,6 +111,7 @@ def digest(
             base_url=base_url,
             vault=vault,
             diagram=diagram,
+            figures=figures,
             max_input_chars=max_input_chars,
             max_tokens=max_tokens,
             cache_dir=cache_dir,
@@ -116,10 +121,19 @@ def digest(
         llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url, cfg.max_tokens)
         gdir = cfg.vault / "Glossary"
         existing_terms = {p.stem.lower() for p in gdir.glob("*.md")} if gdir.exists() else set()
+        figure_paths = None
+        if cfg.figures and paper.figures:
+            capped_figures = paper.figures[: cfg.max_figures]
+            progress(f"Fetching {len(capped_figures)} figures...")
+            figure_paths = fetch.fetch_figures(
+                capped_figures, arxiv_id, cfg.cache_dir,
+                base_url=fetch.html_base_url(arxiv_id, cfg.cache_dir), refresh=refresh,
+            )
         d = digest_mod.build_digest(
             paper, llm_backend, cfg.level, existing_terms, cfg.max_input_chars,
             progress=progress, diagram=cfg.diagram,
             workers=4 if cfg.backend != "local" else 1,
+            figure_paths=figure_paths,
         )
         folder = render.render_digest(d, cfg.vault, force=force)
         print(folder)

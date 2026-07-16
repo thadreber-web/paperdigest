@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 from . import mermaid
-from .extract import Paper
-from .llm import Backend, LLMError, complete_with_retry, repair_json, run_tasks, strip_fences
+from .extract import Figure, Paper
+from .llm import Backend, LLMError, VisionUnsupportedError, complete_with_retry, repair_json, run_tasks, strip_fences
 
 
 @dataclass
@@ -16,6 +17,14 @@ class ConceptNote:
     title: str
     body_md: str
     section: str
+
+
+@dataclass
+class FigureNote:
+    caption: str
+    body_md: str
+    image_path: Path
+    concept_title: str | None
 
 
 @dataclass
@@ -29,6 +38,7 @@ class Digest:
     self_test: list[str]
     model: str
     level: str
+    figures: list[FigureNote] = field(default_factory=list)
 
 
 LEVEL_GUIDANCE = {
@@ -78,6 +88,11 @@ DIAGRAM_GUIDANCE = {
         "containing parentheses, math, or special characters)."
     ),
 }
+
+_FIGURE_SYSTEM = """\
+You explain figures from research papers to a {level}-level learner. Be concise: at most 250 words. \
+Explain what the figure shows and why it matters for the paper. If any detail is unclear in the image, \
+say so instead of guessing."""
 
 _GLOSSARY_SYSTEM = """\
 You define research-paper jargon in plain English for a {level}-level reader.
@@ -141,6 +156,103 @@ def _find_section_text(paper: Paper, section_title: str, fallback: str) -> str:
     return best.text if best else fallback
 
 
+def _figure_concept_title(figure_section: str | None, concepts: list[ConceptNote]) -> str | None:
+    """Match a figure's section against concept sections; unmatched figures go to the overview."""
+    if not figure_section:
+        return None
+    want = figure_section.strip().lower()
+    if not want:
+        return None
+    stripped_want = _strip_section_num(want)
+    if stripped_want:  # tier 1: exact match ignoring leading section numbers
+        for c in concepts:
+            if _strip_section_num(c.section.strip().lower()) == stripped_want:
+                return c.title
+    for c in concepts:  # tier 2: exact match, numbers included
+        if c.section.strip().lower() == want:
+            return c.title
+    return None
+
+
+def _caption_snippet(caption: str, words: int = 6) -> str:
+    parts = caption.split()
+    snippet = " ".join(parts[:words])
+    return snippet + ("..." if len(parts) > words else "")
+
+
+def _explain_figure(
+    i: int,
+    fig: Figure,
+    image_path: Path,
+    total: int,
+    backend: Backend,
+    fig_system: str,
+    paper: Paper,
+    tldr: str,
+    concepts: list[ConceptNote],
+    progress: Callable[[str], None],
+) -> FigureNote:
+    progress(f"Explaining figure {i}/{total}: {_caption_snippet(fig.caption)}")
+    image_bytes = image_path.read_bytes()
+    user = (
+        f"PAPER TITLE: {paper.title}\nPAPER TLDR: {tldr}\nFIGURE CAPTION: {fig.caption}\n\n"
+        "Explain what this figure shows in this paper and why it matters."
+    )
+    body = complete_with_retry(backend, fig_system, user, images=[image_bytes]).strip()
+    return FigureNote(
+        caption=fig.caption,
+        body_md=body,
+        image_path=image_path,
+        concept_title=_figure_concept_title(fig.section, concepts),
+    )
+
+
+def _explain_figures(
+    paper: Paper,
+    figure_paths: dict[str, Path],
+    backend: Backend,
+    fig_system: str,
+    tldr: str,
+    concepts: list[ConceptNote],
+    progress: Callable[[str], None],
+    workers: int,
+) -> list[FigureNote]:
+    figs = [f for f in paper.figures if f.src in figure_paths]
+    if not figs:
+        return []
+    total = len(figs)
+    first, rest = figs[0], figs[1:]
+
+    def _explain(i: int, fig: Figure) -> FigureNote:
+        return _explain_figure(
+            i, fig, figure_paths[fig.src], total, backend, fig_system, paper, tldr, concepts, progress
+        )
+
+    try:
+        first_note: FigureNote | None = _explain(1, first)
+    except VisionUnsupportedError:
+        # Probe serially with the first figure only: if the backend rejects images at all,
+        # every subsequent call would fail identically, so drop all figures after one warning
+        # rather than firing (and warning about) N doomed calls.
+        progress(f"Warning: backend has no vision support; skipping {total} figures.")
+        return []
+    except LLMError as e:
+        progress(f"Warning: could not explain figure 1 ({_caption_snippet(first.caption)}): {e}; skipping.")
+        first_note = None
+
+    def _explain_or_skip(numbered: tuple[int, Figure]) -> FigureNote | None:
+        i, fig = numbered
+        try:
+            return _explain(i, fig)
+        except LLMError as e:
+            progress(f"Warning: could not explain figure {i} ({_caption_snippet(fig.caption)}): {e}; skipping.")
+            return None
+
+    rest_notes = run_tasks(list(enumerate(rest, start=2)), _explain_or_skip, workers=workers) if rest else []
+    notes = ([first_note] if first_note is not None else []) + [n for n in rest_notes if n is not None]
+    return notes
+
+
 def build_digest(
     paper: Paper,
     backend: Backend,
@@ -150,6 +262,7 @@ def build_digest(
     progress: Callable[[str], None] = _default_progress,
     diagram: str = "mermaid",
     workers: int = 1,
+    figure_paths: dict[str, Path] | None = None,
 ) -> Digest:
     if level not in LEVEL_GUIDANCE:
         raise ValueError(f"level must be one of {tuple(LEVEL_GUIDANCE)}, got {level!r}")
@@ -197,6 +310,13 @@ def build_digest(
 
     concepts = run_tasks(list(enumerate(outline["concepts"], 1)), _explain, workers=workers)
 
+    figures: list[FigureNote] = []
+    if figure_paths:
+        fig_system = _FIGURE_SYSTEM.format(level=level)
+        figures = _explain_figures(
+            paper, figure_paths, backend, fig_system, str(outline["tldr"]), concepts, progress, workers
+        )
+
     jargon = [str(t) for t in outline["jargon"]]
     new_terms = [t for t in jargon if t.lower() not in existing_terms]
     glossary: dict[str, str] = {}
@@ -220,4 +340,5 @@ def build_digest(
         self_test=[str(q) for q in outline["self_test"]],
         model=backend.model,
         level=level,
+        figures=figures,
     )
