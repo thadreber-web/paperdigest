@@ -9,11 +9,15 @@ from paperdigest.llm import (
     AnthropicBackend,
     LLMError,
     OpenAICompatibleBackend,
+    VisionUnsupportedError,
     complete_with_retry,
     make_backend,
     run_tasks,
     strip_fences,
 )
+
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 16
 
 
 @pytest.fixture(autouse=True)
@@ -269,3 +273,209 @@ def test_run_tasks_parallel_raises_on_first_failure():
 
     with pytest.raises(LLMError, match="worker failed"):
         run_tasks([1, 2, 3, 4], fn, workers=4)
+
+
+def test_openai_backend_sends_png_data_url_image():
+    stub = _StubCompletions()
+    backend = _openai_backend(stub)
+    backend.complete("s", "u", images=[PNG_BYTES])
+    content = stub.kwargs_seen[0]["messages"][1]["content"]
+    assert content[0] == {"type": "text", "text": "u"}
+    assert content[1]["type"] == "image_url"
+    url = content[1]["image_url"]["url"]
+    assert url.startswith("data:image/png;base64,")
+
+
+def test_openai_backend_sends_jpeg_data_url_image():
+    stub = _StubCompletions()
+    backend = _openai_backend(stub)
+    backend.complete("s", "u", images=[JPEG_BYTES])
+    content = stub.kwargs_seen[0]["messages"][1]["content"]
+    url = content[1]["image_url"]["url"]
+    assert url.startswith("data:image/jpeg;base64,")
+
+
+def test_openai_backend_multiple_images_all_present():
+    stub = _StubCompletions()
+    backend = _openai_backend(stub)
+    backend.complete("s", "u", images=[PNG_BYTES, JPEG_BYTES])
+    content = stub.kwargs_seen[0]["messages"][1]["content"]
+    assert len(content) == 3  # text + 2 images
+    assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+    assert content[2]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+def test_openai_backend_no_images_keeps_plain_string_content():
+    stub = _StubCompletions()
+    backend = _openai_backend(stub)
+    backend.complete("s", "u")
+    assert stub.kwargs_seen[0]["messages"][1]["content"] == "u"
+
+
+def test_openai_backend_json_mode_and_images_combined_does_not_crash():
+    stub = _StubCompletions()
+    backend = _openai_backend(stub)
+    assert backend.complete("s", "u", json_mode=True, images=[PNG_BYTES]) == "ok"
+    content = stub.kwargs_seen[0]["messages"][1]["content"]
+    assert content[0] == {"type": "text", "text": "u"}
+
+
+def test_openai_backend_badrequest_without_images_keeps_existing_behavior():
+    stub = _StubCompletions(reject_response_format=True)
+    backend = _openai_backend(stub)
+    # json_mode BadRequestError still degrades gracefully, no VisionUnsupportedError
+    assert backend.complete("s", "u", json_mode=True) == "ok"
+    assert "response_format" not in stub.kwargs_seen[-1]
+
+
+def test_openai_backend_badrequest_with_images_raises_vision_unsupported():
+    class _RejectingCompletions:
+        def create(self, **kwargs):
+            import openai
+
+            req = httpx.Request("POST", "http://localhost/v1")
+            raise openai.BadRequestError(
+                "unsupported content type",
+                response=httpx.Response(400, request=req),
+                body=None,
+            )
+
+    backend = OpenAICompatibleBackend("m", base_url="http://localhost:9999/v1")
+    backend._client = SimpleNamespace(chat=SimpleNamespace(completions=_RejectingCompletions()))
+    with pytest.raises(VisionUnsupportedError):
+        backend.complete("s", "u", images=[PNG_BYTES])
+
+
+def test_openai_backend_badrequest_without_images_raises_plain_error():
+    class _RejectingCompletions:
+        def create(self, **kwargs):
+            import openai
+
+            req = httpx.Request("POST", "http://localhost/v1")
+            raise openai.BadRequestError(
+                "bad request", response=httpx.Response(400, request=req), body=None
+            )
+
+    backend = OpenAICompatibleBackend("m", base_url="http://localhost:9999/v1")
+    backend._client = SimpleNamespace(chat=SimpleNamespace(completions=_RejectingCompletions()))
+    import openai
+
+    with pytest.raises(openai.BadRequestError):
+        backend.complete("s", "u")
+
+
+def test_anthropic_backend_sends_image_blocks(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    backend = AnthropicBackend("claude-sonnet-5")
+
+    class _Messages:
+        def create(self, **kwargs):
+            self.kwargs_seen = kwargs
+            return SimpleNamespace(
+                stop_reason="end_turn",
+                content=[SimpleNamespace(type="text", text="ok")],
+            )
+
+    stub = _Messages()
+    backend._client = SimpleNamespace(messages=stub)
+    backend.complete("s", "u", images=[PNG_BYTES, JPEG_BYTES])
+    import base64
+
+    content = stub.kwargs_seen["messages"][0]["content"]
+    assert content[0]["type"] == "image"
+    assert content[0]["source"]["type"] == "base64"
+    assert content[0]["source"]["media_type"] == "image/png"
+    assert content[0]["source"]["data"] == base64.b64encode(PNG_BYTES).decode("ascii")
+    assert content[1]["source"]["media_type"] == "image/jpeg"
+    assert content[2] == {"type": "text", "text": "u"}
+
+
+def test_anthropic_backend_no_images_keeps_plain_string_content(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    backend = AnthropicBackend("claude-sonnet-5")
+
+    class _Messages:
+        def create(self, **kwargs):
+            self.kwargs_seen = kwargs
+            return SimpleNamespace(
+                stop_reason="end_turn",
+                content=[SimpleNamespace(type="text", text="ok")],
+            )
+
+    stub = _Messages()
+    backend._client = SimpleNamespace(messages=stub)
+    backend.complete("s", "u")
+    assert stub.kwargs_seen["messages"][0]["content"] == "u"
+
+
+def test_anthropic_backend_badrequest_with_images_raises_vision_unsupported(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    backend = AnthropicBackend("claude-sonnet-5")
+
+    class _RejectingMessages:
+        def create(self, **kwargs):
+            import anthropic
+
+            req = httpx.Request("POST", "http://localhost/v1")
+            raise anthropic.BadRequestError(
+                "unsupported content", response=httpx.Response(400, request=req), body=None
+            )
+
+    backend._client = SimpleNamespace(messages=_RejectingMessages())
+    with pytest.raises(VisionUnsupportedError):
+        backend.complete("s", "u", images=[PNG_BYTES])
+
+
+def test_anthropic_backend_badrequest_without_images_raises_plain_error(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    backend = AnthropicBackend("claude-sonnet-5")
+
+    class _RejectingMessages:
+        def create(self, **kwargs):
+            import anthropic
+
+            req = httpx.Request("POST", "http://localhost/v1")
+            raise anthropic.BadRequestError(
+                "bad request", response=httpx.Response(400, request=req), body=None
+            )
+
+    backend._client = SimpleNamespace(messages=_RejectingMessages())
+    import anthropic
+
+    with pytest.raises(anthropic.BadRequestError):
+        backend.complete("s", "u")
+
+
+def test_complete_with_retry_passes_images_through():
+    backend = FakeBackend(["ok"])
+    complete_with_retry(backend, "s", "u", images=[PNG_BYTES])
+    assert backend.images_calls == [[PNG_BYTES]]
+
+
+def test_complete_with_retry_without_images_uses_legacy_signature():
+    """Backends without an images param in their signature must keep working."""
+
+    class _LegacyBackend:
+        model = "legacy"
+
+        def complete(self, system, user, json_mode=False):
+            return "ok"
+
+    assert complete_with_retry(_LegacyBackend(), "s", "u") == "ok"
+
+
+def test_complete_with_retry_vision_unsupported_not_retried():
+    class _AlwaysVisionRejects:
+        model = "rejector"
+
+        def __init__(self):
+            self.attempts = 0
+
+        def complete(self, system, user, json_mode=False, images=None):
+            self.attempts += 1
+            raise VisionUnsupportedError("no vision support")
+
+    backend = _AlwaysVisionRejects()
+    with pytest.raises(VisionUnsupportedError):
+        complete_with_retry(backend, "s", "u", retries=2, images=[PNG_BYTES])
+    assert backend.attempts == 1

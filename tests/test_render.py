@@ -1,8 +1,13 @@
+from pathlib import Path
+
 import pytest
 
-from paperdigest.digest import ConceptNote, Digest
+from paperdigest.digest import ConceptNote, Digest, FigureNote
 from paperdigest.extract import Paper, Section
 from paperdigest.render import OutputExistsError, note_name, render_digest, slugify
+
+FIXTURES = Path(__file__).parent / "fixtures"
+FIGURE_PATH = FIXTURES / "figure1.png"
 
 
 def _digest():
@@ -106,3 +111,56 @@ def test_render_rolls_back_paper_folder_on_partial_write_failure(tmp_path, monke
 
     assert not folder.exists()  # rolled back: no half-written paper folder
     assert (gdir / "softmax.md").read_text() == "MY HAND-WRITTEN NOTE"  # untouched
+
+
+def test_render_embeds_figure_in_matched_concept_note(tmp_path):
+    d = _digest()
+    d.figures = [
+        FigureNote(
+            caption="Fig 1: the architecture.",
+            body_md="This shows the architecture.",
+            image_path=FIGURE_PATH,
+            concept_title="Self-Attention",
+        )
+    ]
+    folder = render_digest(d, tmp_path)
+    assert (folder / "fig1.png").read_bytes() == FIGURE_PATH.read_bytes()
+    concept = (folder / "01 Self-Attention.md").read_text()
+    assert "## Figure: Fig 1: the architecture." in concept
+    assert "![[fig1.png]]" in concept
+    assert "This shows the architecture." in concept
+    other_concept = (folder / "02 Layer Stacking.md").read_text()
+    assert "Figure:" not in other_concept
+    overview = (folder / "00 Overview.md").read_text()
+    assert "Figure:" not in overview
+
+
+def test_render_embeds_unmatched_figure_in_overview(tmp_path):
+    d = _digest()
+    d.figures = [
+        FigureNote(
+            caption="Fig 2: results.",
+            body_md="This shows results.",
+            image_path=FIGURE_PATH,
+            concept_title=None,
+        )
+    ]
+    folder = render_digest(d, tmp_path)
+    assert (folder / "fig1.png").exists()
+    overview = (folder / "00 Overview.md").read_text()
+    assert "## Figure: Fig 2: results." in overview
+    assert "![[fig1.png]]" in overview
+    assert "This shows results." in overview
+
+
+def test_render_multiple_figures_numbered_and_extensions_preserved(tmp_path):
+    d = _digest()
+    d.figures = [
+        FigureNote("Fig 1", "Body 1", FIGURE_PATH, "Self-Attention"),
+        FigureNote("Fig 2", "Body 2", FIGURE_PATH, None),
+    ]
+    folder = render_digest(d, tmp_path)
+    assert (folder / "fig1.png").exists()
+    assert (folder / "fig2.png").exists()
+    assert "![[fig1.png]]" in (folder / "01 Self-Attention.md").read_text()
+    assert "![[fig2.png]]" in (folder / "00 Overview.md").read_text()
