@@ -205,6 +205,19 @@ def test_concept_note_links_matching_module(tmp_path):
     assert "Build it" not in other_concept  # "2 Method" doesn't cite §3.2
 
 
+def test_concept_note_links_with_section_prefix(tmp_path):
+    # Regression test: LLMs emit "Section 3.2.1" format which must link to modules citing §3.2.1
+    _fake_project(tmp_path)
+    d = _digest()
+    d.concepts[0] = ConceptNote("Self-Attention", "Attention body.", "Section 3.2 Attention")
+    folder = render_digest(d, tmp_path, project_dir=tmp_path / "projects")
+    concept = (folder / "01 Self-Attention.md").read_text()
+    # Should produce link even though section format is "Section 3.2"
+    assert "*Build it: " in concept
+    assert "layers.py" in concept
+    assert "file://" in concept
+
+
 def test_concept_links_skipped_when_project_missing(tmp_path):
     folder = render_digest(_digest(), tmp_path, project_dir=tmp_path / "projects")  # nothing on disk
     overview = (folder / "00 Overview.md").read_text()
@@ -263,6 +276,24 @@ def test_section_num_non_numeric_sections():
     # Numeric sections should work
     assert _section_num("3.2 Attention") == "3.2"
     assert _section_num("1 Introduction") == "1"
+
+
+def test_section_num_with_optional_prefix():
+    # Test "Section" prefix (case-insensitive)
+    assert _section_num("Section 3.2.1") == "3.2.1"
+    assert _section_num("section 3 Method") == "3"
+    assert _section_num("SECTION 2.1") == "2.1"
+    # Test "Sec." or "Sec" prefix (case-insensitive)
+    assert _section_num("Sec. 4.1") == "4.1"
+    assert _section_num("sec. 1.2.3") == "1.2.3"
+    assert _section_num("SEC 2") == "2"
+    # Test "§" prefix
+    assert _section_num("§3.2") == "3.2"
+    assert _section_num("§1") == "1"
+    # Non-numeric still returns ""
+    assert _section_num("Introduction") == ""
+    # Preserve existing behavior: no prefix
+    assert _section_num("3.2 Attention") == "3.2"
 
 
 def test_project_section_index_skips_unreadable_files(tmp_path):
