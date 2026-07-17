@@ -70,7 +70,11 @@ def _project_section_index(project: Path) -> dict[str, list[str]]:
     for py in sorted(src.rglob("*.py")):
         if py.name in ("__init__.py", "tracking.py"):
             continue
-        refs = list(dict.fromkeys(_SECTION_REF_RE.findall(py.read_text())))
+        try:
+            refs = list(dict.fromkeys(_SECTION_REF_RE.findall(py.read_text())))
+        except (OSError, UnicodeDecodeError):
+            # Skip files that can't be read (broken symlinks, permission denied, invalid encoding)
+            continue
         if refs:
             index[str(py.relative_to(project))] = refs
     return index

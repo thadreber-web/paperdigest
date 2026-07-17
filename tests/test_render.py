@@ -7,6 +7,7 @@ from paperdigest.extract import Paper, Section
 from paperdigest.render import (
     OutputExistsError,
     _project_section_index,
+    _section_num,
     _sections_match,
     folder_name,
     note_name,
@@ -241,3 +242,45 @@ def test_render_multiple_figures_numbered_and_extensions_preserved(tmp_path):
     assert (folder / "fig2.png").exists()
     assert "![[fig1.png]]" in (folder / "01 Self-Attention.md").read_text()
     assert "![[fig2.png]]" in (folder / "00 Overview.md").read_text()
+
+
+def test_sections_match_dotted_prefix_logic():
+    # Basic match
+    assert _sections_match("3", "3") is True
+    # Concept subsection matches cited
+    assert _sections_match("3", "3.2") is True
+    # Cited subsection matches concept
+    assert _sections_match("3.2.1", "3.2") is True
+    # False positive guard: "3" should not match "31"
+    assert _sections_match("3", "31") is False
+
+
+def test_section_num_non_numeric_sections():
+    # Non-numeric section should return ""
+    assert _section_num("Appendix A") == ""
+    assert _section_num("Introduction") == ""
+    assert _section_num("") == ""
+    # Numeric sections should work
+    assert _section_num("3.2 Attention") == "3.2"
+    assert _section_num("1 Introduction") == "1"
+
+
+def test_project_section_index_skips_unreadable_files(tmp_path):
+    # Create a project with one good module, one broken symlink, and one undecodable file
+    proj = tmp_path / "proj"
+    src = proj / "src" / "pkg"
+    src.mkdir(parents=True)
+
+    # Good module
+    (src / "good.py").write_text("# TODO(paper §3.2): attention\n")
+
+    # Broken symlink
+    (src / "broken.py").symlink_to(src / "does-not-exist.py")
+
+    # Undecodable file
+    (src / "bad.py").write_bytes(b"\xff\xfe\x00garbage")
+
+    # Should not raise and should contain only the good file
+    index = _project_section_index(proj)
+    assert set(index.keys()) == {"src/pkg/good.py"}
+    assert index["src/pkg/good.py"] == ["3.2"]
