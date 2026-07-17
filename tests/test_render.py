@@ -296,6 +296,27 @@ def test_section_num_with_optional_prefix():
     assert _section_num("3.2 Attention") == "3.2"
 
 
+def test_section_num_regression_section_anywhere_in_heading():
+    # Regression test: live-observed "Attention Is All You Need, Section 4 (Why Self-Attention)" -> "4"
+    assert _section_num("Attention Is All You Need, Section 4 (Why Self-Attention)") == "4"
+
+
+def test_section_num_symbol_in_midstring():
+    # Regression test: "see § 3.2 for details" -> "3.2"
+    assert _section_num("see § 3.2 for details") == "3.2"
+
+
+def test_section_num_bare_midstring_number_no_match():
+    # Bare mid-string numbers must NOT match
+    assert _section_num("Top 10 results") == ""
+
+
+def test_section_num_existing_anchored_behaviors_preserved():
+    # Existing behaviors must still work
+    assert _section_num("3.2 Attention") == "3.2"
+    assert _section_num("Section 3.2.1") == "3.2.1"
+
+
 def test_project_section_index_skips_unreadable_files(tmp_path):
     # Create a project with one good module, one broken symlink, and one undecodable file
     proj = tmp_path / "proj"

@@ -56,8 +56,16 @@ _SECTION_REF_RE = re.compile(r"§(\d+(?:\.\d+)*)")
 
 
 def _section_num(section: str) -> str:
-    """Leading section number of a heading, e.g. '3.2 Attention' -> '3.2' or 'Section 3.2' -> '3.2'."""
-    m = re.match(r"(?:section|sec\.?|§)?\s*(\d+(?:\.\d+)*)", section.strip(), re.IGNORECASE)
+    """Extract section number from a heading.
+
+    Finds prefixed forms ('Section 3.2', '§3.2') anywhere, or leading bare
+    numbers. Examples: '3.2 Attention' -> '3.2', 'Section 3.2' -> '3.2',
+    'Intro, Section 4.1 (why)' -> '4.1'.
+    """
+    m = re.search(r"(?:section|sec\.?|§)\s*(\d+(?:\.\d+)*)", section, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    m = re.match(r"(\d+(?:\.\d+)*)", section.strip())
     return m.group(1) if m else ""
 
 
