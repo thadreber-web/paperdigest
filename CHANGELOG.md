@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- Scaffold projects now include a generated `AGENTS.md` coding-agent brief
+  (dependency-ordered implementation plan, TODO counts, definition of done,
+  ground rules), assembled deterministically with no extra LLM call;
+  `scaffold --vault` links it back to the paper's Obsidian notes.
 - Figures: paper figures are downloaded and explained by a vision-capable
   model, with the image and explanation embedded in the matching concept
   note. `--figures/--no-figures` and the `max_figures` config key (default

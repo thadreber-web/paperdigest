@@ -99,6 +99,13 @@ dangerous calls (`subprocess`, `socket`, `eval`/`exec`, `os.system`, `pickle.loa
 `ctypes`, and similar) — aborting loudly if it finds any. That scan catches obviously
 hazardous patterns, not everything — read the scaffolded code before you run it.
 
+Every project also gets a generated `AGENTS.md` — a coding-agent brief with a
+dependency-ordered implementation plan, a TODO count and cited paper sections per
+module, a definition of done, and ground rules for the harness. It's assembled
+deterministically from the same stage data, no extra LLM call. Pass `--vault` (or set
+`vault` in your config file) and it links back to the paper's Obsidian notes so an
+agent can read the plain-English explanation before touching code.
+
 ## Cloud backends (optional, cost money)
 
 | Backend | Flags | Key (env var only) |
