@@ -4,7 +4,7 @@ import pytest
 
 from paperdigest.digest import ConceptNote, Digest, FigureNote
 from paperdigest.extract import Paper, Section
-from paperdigest.render import OutputExistsError, note_name, render_digest, slugify
+from paperdigest.render import OutputExistsError, folder_name, note_name, render_digest, slugify
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FIGURE_PATH = FIXTURES / "figure1.png"
@@ -37,6 +37,10 @@ def _digest():
 def test_slugify_and_note_name():
     assert slugify("Attention Is All You Need, Really!") == "attention-is-all-you-need-really"
     assert note_name('Bad: "name" [x] #tag?') == "Bad name x tag"
+
+
+def test_folder_name_composes_year_and_slug():
+    assert folder_name("1706.03762", "Attention Is All You Need") == "2017-attention-is-all-you-need"
 
 
 def test_render_creates_folder_and_notes(tmp_path):

@@ -36,9 +36,13 @@ def _frontmatter(digest: Digest, extra_tags: str = "") -> str:
     )
 
 
-def paper_folder(arxiv_id: str, title: str, vault: Path) -> Path:
+def folder_name(arxiv_id: str, title: str) -> str:
     year = "20" + arxiv_id[:2]
-    return vault / "Papers" / f"{year}-{slugify(title)}"
+    return f"{year}-{slugify(title)}"
+
+
+def paper_folder(arxiv_id: str, title: str, vault: Path) -> Path:
+    return vault / "Papers" / folder_name(arxiv_id, title)
 
 
 def check_output_free(folder: Path, force: bool) -> None:

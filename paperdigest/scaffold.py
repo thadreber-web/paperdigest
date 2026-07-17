@@ -13,7 +13,7 @@ from . import templates
 from .digest import _paper_body
 from .extract import Paper
 from .llm import Backend, LLMError, complete_with_retry, repair_json, run_tasks, strip_fences
-from .render import OutputExistsError, slugify
+from .render import OutputExistsError, folder_name, slugify
 
 
 class ScaffoldError(Exception):
@@ -113,8 +113,7 @@ def package_name(title: str) -> str:
 
 
 def project_folder(arxiv_id: str, title: str, dest: Path) -> Path:
-    year = "20" + arxiv_id[:2]
-    return dest / f"{year}-{slugify(title)}"
+    return dest / folder_name(arxiv_id, title)
 
 
 def _stage_json(backend: Backend, stage: str, system: str, user: str, required: tuple[str, ...]) -> dict:
