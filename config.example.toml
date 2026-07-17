@@ -11,6 +11,7 @@ diagram = "mermaid"            # mermaid (renders in Obsidian) | ascii (never br
 max_input_chars = 24000        # keep within your local model's context window
 # max_tokens = 8192            # output token cap; lower for small-context local models
 # cache_dir = "~/.cache/paperdigest"   # where fetched paper HTML is cached
+# project_dir = "~/projects"       # where scaffolded projects live; digest links notes to <project_dir>/<year>-<slug>
 # figures = true                # download and explain figures; needs a vision-capable backend
 # max_figures = 8               # cap on figures explained per paper, by document order
 

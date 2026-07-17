@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from paperdigest.config import load_config
+from paperdigest.config import config_file_has, load_config
 
 
 def test_defaults_are_local_first():
@@ -92,3 +92,24 @@ def test_max_figures_defaults_and_overrides(tmp_path):
     f.write_text("max_figures = 3\n")
     assert load_config(f).max_figures == 3
     assert load_config(None, max_figures=2).max_figures == 2
+
+
+def test_project_dir_defaults_to_none():
+    cfg = load_config(None)
+    assert cfg.project_dir is None
+
+
+def test_project_dir_tilde_expanded(tmp_path):
+    p = tmp_path / "config.toml"
+    p.write_text('project_dir = "~/projects"\n')
+    cfg = load_config(p)
+    assert cfg.project_dir == Path.home() / "projects"
+
+
+def test_config_file_has(tmp_path):
+    p = tmp_path / "config.toml"
+    p.write_text('vault = "/somewhere"\n')
+    assert config_file_has(p, "vault") is True
+    assert config_file_has(p, "project_dir") is False
+    assert config_file_has(tmp_path / "missing.toml", "vault") is False
+    assert config_file_has(None, "vault") is False

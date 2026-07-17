@@ -23,6 +23,7 @@ def make_project():
             "experiments/exp001_smoke/README.md": "# Smoke\n",
             "README.md": "# Tiny Transformers\n",
             "EXPERIMENTS.md": "# Experiments\n",
+            "AGENTS.md": "# AGENTS.md — implementation brief\n",
         },
     )
 
@@ -34,6 +35,7 @@ def test_write_project_creates_full_tree(tmp_path):
     for rel in (
         "README.md",
         "EXPERIMENTS.md",
+        "AGENTS.md",
         "pyproject.toml",
         ".gitignore",
         "train.py",
@@ -61,6 +63,10 @@ def test_write_project_git_inits_with_initial_commit(tmp_path):
         ["git", "log", "--oneline"], cwd=folder, capture_output=True, text=True, check=True
     ).stdout
     assert "arXiv:1706.03762" in log
+    tracked = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", "HEAD"], cwd=folder, capture_output=True, text=True, check=True
+    ).stdout
+    assert "AGENTS.md" in tracked.splitlines()
 
 
 def test_write_project_refuses_existing_without_force(tmp_path):

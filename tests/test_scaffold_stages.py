@@ -1,5 +1,6 @@
 import json
 import threading
+from pathlib import Path
 
 import pytest
 from conftest import FakeBackend
@@ -124,7 +125,7 @@ def test_module_filenames_are_stripped_to_basenames():
         }
     )
     backend = FakeBackend([ANALYZE, evil_plan, MODULE_PY, SMOKE_TEST])
-    stubs = scaffold._build_stub_files(
+    stubs, _analysis, _modules = scaffold._build_stub_files(
         make_paper(), backend, "tiny_transformers_explained", max_chars=100_000, progress=lambda m: None,
     )
     assert "src/tiny_transformers_explained/model.py" in stubs
@@ -172,6 +173,7 @@ def test_build_scaffold_produces_all_files():
         "experiments/exp001_smoke/README.md",
         "README.md",
         "EXPERIMENTS.md",
+        "AGENTS.md",
     }
     assert "TODO(paper" in project.files["src/tiny_transformers_explained/model.py"]
 
@@ -330,7 +332,7 @@ def test_build_stub_files_parallel_returns_modules_in_order():
             "PACKAGE: pkg (import as": SMOKE_TEST,
         },
     )
-    files = scaffold._build_stub_files(
+    files, _analysis, _modules = scaffold._build_stub_files(
         make_paper(), backend, "pkg", max_chars=100_000, progress=lambda m: None, workers=4,
     )
     ordered_keys = [k for k in files if k.startswith("src/pkg/")]
@@ -385,3 +387,47 @@ def test_harness_rejects_prompt_echo_in_train_py():
     with pytest.raises(scaffold.ScaffoldError) as exc:
         scaffold.build_scaffold(make_paper(), backend, max_chars=100_000, progress=lambda m: None)
     assert exc.value.stage == "harness"
+
+
+def test_build_scaffold_stashes_analysis_and_modules_and_agents_md():
+    backend = FakeBackend(full_responses())
+    project = scaffold.build_scaffold(make_paper(), backend, max_chars=100_000, progress=lambda m: None)
+    assert project.analysis == json.loads(ANALYZE)
+    assert project.modules == json.loads(PLAN)["modules"]
+    assert "AGENTS.md" in project.files
+    assert "implementation brief" in project.files["AGENTS.md"]
+
+
+def _agents_project():
+    return scaffold.ScaffoldProject(
+        arxiv_id="1706.03762", title="Attention Is All You Need",
+        url="https://arxiv.org/abs/1706.03762", package="attention", model="m",
+        modules=[
+            {"filename": "model.py", "responsibility": "Full model.", "api": [], "dependencies": ["layers.py"]},
+            {"filename": "layers.py", "responsibility": "Attention blocks.", "api": [], "dependencies": []},
+        ],
+        analysis={"hyperparameters": {"d_model": 512}},
+        files={
+            "src/attention/layers.py": "# TODO(paper §3.2): scaled dot-product\nraise NotImplementedError\n",
+            "src/attention/model.py": '"""See §3."""\n# TODO(paper §3): wire encoder/decoder\n',
+        },
+    )
+
+
+def test_agents_md_orders_modules_by_dependency_and_counts_todos():
+    text = scaffold.build_agents_md(_agents_project(), vault=None)
+    assert text.index("`layers.py`") < text.index("`model.py`")
+    assert "1 TODO (§3.2)" in text
+    assert "depends on: layers.py" in text
+
+
+def test_agents_md_vault_section_links_paper_folder():
+    text = scaffold.build_agents_md(_agents_project(), vault=Path("/home/u/Vault"))
+    assert "/home/u/Vault/Papers/2017-attention-is-all-you-need" in text
+    assert "file:///home/u/Vault/Papers/2017-attention-is-all-you-need" in text
+
+
+def test_agents_md_without_vault_gives_generate_hint():
+    text = scaffold.build_agents_md(_agents_project(), vault=None)
+    assert "paperdigest 1706.03762 --vault <your-vault>" in text
+    assert "file://" not in text

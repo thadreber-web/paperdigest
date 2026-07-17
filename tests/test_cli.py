@@ -44,6 +44,16 @@ def test_end_to_end_offline(tmp_path, monkeypatch, fixture_html):
     assert (tmp_path / "Glossary" / "attention.md").exists()
 
 
+def test_end_to_end_offline_with_project_dir(tmp_path, monkeypatch, fixture_html):
+    _patch(monkeypatch, fixture_html)
+    projects = tmp_path / "projects"
+    result = runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path), "--project-dir", str(projects)])
+    assert result.exit_code == 0, result.output
+    folder = tmp_path / "Papers" / "2017-tiny-transformers-explained"
+    overview = (folder / "00 Overview.md").read_text()
+    assert "## Build it" in overview
+
+
 def test_rerun_refuses_without_force(tmp_path, monkeypatch, fixture_html):
     _patch(monkeypatch, fixture_html)
     assert runner.invoke(cli.app, ["1706.03762", "--vault", str(tmp_path)]).exit_code == 0
