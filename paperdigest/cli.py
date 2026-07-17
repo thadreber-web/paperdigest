@@ -16,7 +16,7 @@ except ImportError:  # typer >=0.16 vendors click internally as typer._click
 from . import __version__, extract, fetch, render
 from . import digest as digest_mod
 from . import scaffold as scaffold_mod
-from .config import Config, load_config
+from .config import Config, config_file_has, load_config
 from .extract import Paper
 from .llm import LLMError, make_backend
 
@@ -99,6 +99,9 @@ def digest(
     max_input_chars: int = typer.Option(None, "--max-input-chars", help="paper body char budget before trimming"),
     max_tokens: int = typer.Option(None, "--max-tokens", help="LLM output token cap"),
     cache_dir: Path = typer.Option(None, "--cache-dir", help="directory for cached fetched HTML"),
+    project_dir: Path = typer.Option(
+        None, "--project-dir", help="Where scaffolded projects live; notes link to <project-dir>/<year>-<slug>"
+    ),
 ):
     """Digest an AI/ML paper into plain-English Obsidian notes."""
     progress = _no_progress if quiet else _progress
@@ -115,6 +118,7 @@ def digest(
             max_input_chars=max_input_chars,
             max_tokens=max_tokens,
             cache_dir=cache_dir,
+            project_dir=project_dir,
         )
         arxiv_id, paper = _fetch_and_extract(cfg, ref, refresh, progress)
         render.check_output_free(render.paper_folder(arxiv_id, paper.title, cfg.vault), force)
@@ -135,7 +139,7 @@ def digest(
             workers=4 if cfg.backend != "local" else 1,
             figure_paths=figure_paths,
         )
-        folder = render.render_digest(d, cfg.vault, force=force)
+        folder = render.render_digest(d, cfg.vault, force=force, project_dir=cfg.project_dir)
         print(folder)
 
 
@@ -146,6 +150,7 @@ def scaffold(
     backend: str = typer.Option(None, "--backend", help="local (default) | anthropic | openai"),
     model: str = typer.Option(None, "--model"),
     base_url: str = typer.Option(None, "--base-url", help="local server URL (default http://localhost:8080/v1)"),
+    vault: Path = typer.Option(None, "--vault", help="Obsidian vault root; links AGENTS.md to the paper's notes"),
     config: Path = typer.Option(Path("config.toml"), "--config"),
     force: bool = typer.Option(False, "--force", help="overwrite an existing project folder"),
     refresh: bool = typer.Option(False, "--refresh", help="re-fetch the paper, ignoring the HTML cache"),
@@ -163,6 +168,7 @@ def scaffold(
                 backend=backend,
                 model=model,
                 base_url=base_url,
+                vault=vault,
                 max_input_chars=max_input_chars,
                 max_tokens=max_tokens,
                 cache_dir=cache_dir,
@@ -171,9 +177,11 @@ def scaffold(
             folder = scaffold_mod.project_folder(arxiv_id, paper.title, dest)
             render.check_output_free(folder, force)
             llm_backend = make_backend(cfg.backend, cfg.model, cfg.base_url, cfg.max_tokens)
+            vault_known = vault is not None or config_file_has(config, "vault")
             project = scaffold_mod.build_scaffold(
                 paper, llm_backend, cfg.max_input_chars, progress=progress,
                 workers=4 if cfg.backend != "local" else 1,
+                vault=cfg.vault if vault_known else None,
             )
             out = scaffold_mod.write_project(project, folder, force=force, progress=progress)
             print(out)

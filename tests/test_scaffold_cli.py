@@ -58,6 +58,31 @@ def test_scaffold_refuses_existing_before_llm(tmp_path, monkeypatch, fixture_htm
     assert "--force" in result.output
 
 
+def test_scaffold_cli_vault_flag_links_notes(tmp_path, monkeypatch, fixture_html):
+    _patch(monkeypatch, fixture_html, full_responses())
+    vault = tmp_path / "vault"
+    result = runner.invoke(
+        cli.app, ["scaffold", "1706.03762", "--dest", str(tmp_path), "--vault", str(vault)]
+    )
+    assert result.exit_code == 0, result.output
+    proj = tmp_path / "2017-tiny-transformers-explained"
+    agents = (proj / "AGENTS.md").read_text()
+    assert "Papers/2017-tiny-transformers-explained" in agents
+    assert f"file://{vault}/Papers/2017-tiny-transformers-explained" in agents
+
+
+def test_scaffold_cli_no_vault_no_config_key_omits_vault_path(tmp_path, monkeypatch, fixture_html):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.toml").write_text("")
+    _patch(monkeypatch, fixture_html, full_responses())
+    dest = tmp_path / "projects"
+    result = runner.invoke(cli.app, ["scaffold", "1706.03762", "--dest", str(dest)])
+    assert result.exit_code == 0, result.output
+    agents = (dest / "2017-tiny-transformers-explained" / "AGENTS.md").read_text()
+    assert "paperdigest 1706.03762 --vault <your-vault>" in agents
+    assert "file://" not in agents
+
+
 def test_scaffold_force_overwrites(tmp_path, monkeypatch, fixture_html):
     _patch(monkeypatch, fixture_html, full_responses())
     assert runner.invoke(cli.app, ["scaffold", "1706.03762", "--dest", str(tmp_path)]).exit_code == 0
@@ -78,6 +103,9 @@ def test_explicit_digest_subcommand_works(tmp_path, monkeypatch, fixture_html):
     )
     glossary = json.dumps({"terms": {"attention": "A weighting scheme."}})
     _patch(monkeypatch, fixture_html, [outline, "Attention body.", glossary])
-    result = runner.invoke(cli.app, ["digest", "1706.03762", "--vault", str(tmp_path)])
+    result = runner.invoke(
+        cli.app,
+        ["digest", "1706.03762", "--vault", str(tmp_path), "--cache-dir", str(tmp_path / "cache")],
+    )
     assert result.exit_code == 0, result.output
     assert (tmp_path / "Papers" / "2017-tiny-transformers-explained" / "00 Overview.md").exists()

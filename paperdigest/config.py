@@ -27,6 +27,7 @@ class Config:
     cache_dir: Path = Path.home() / ".cache" / "paperdigest"
     figures: bool = True  # download and explain figures; needs a vision-capable backend
     max_figures: int = 8  # cap on figures explained per paper, by document order
+    project_dir: Path | None = None  # where scaffolded projects live; digest links notes to <project_dir>/<year>-<slug>
 
 
 def load_config(path: Path | None = None, **overrides) -> Config:
@@ -38,7 +39,7 @@ def load_config(path: Path | None = None, **overrides) -> Config:
     if unknown:
         raise ValueError(f"unknown config keys: {sorted(unknown)}")
     merged = {**data, **{k: v for k, v in overrides.items() if v is not None}}
-    for key in ("vault", "cache_dir"):
+    for key in ("vault", "cache_dir", "project_dir"):
         if key in merged:
             merged[key] = Path(merged[key]).expanduser()
     cfg = replace(Config(), **merged)
@@ -51,3 +52,10 @@ def load_config(path: Path | None = None, **overrides) -> Config:
     if cfg.model is None:
         cfg = replace(cfg, model=DEFAULT_MODELS[cfg.backend])
     return cfg
+
+
+def config_file_has(path: Path | None, key: str) -> bool:
+    """True iff the TOML config file exists and sets `key` at top level."""
+    if path is None or not path.exists():
+        return False
+    return key in tomllib.loads(path.read_text())
