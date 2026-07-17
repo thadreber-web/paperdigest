@@ -103,6 +103,9 @@ def test_explicit_digest_subcommand_works(tmp_path, monkeypatch, fixture_html):
     )
     glossary = json.dumps({"terms": {"attention": "A weighting scheme."}})
     _patch(monkeypatch, fixture_html, [outline, "Attention body.", glossary])
-    result = runner.invoke(cli.app, ["digest", "1706.03762", "--vault", str(tmp_path)])
+    result = runner.invoke(
+        cli.app,
+        ["digest", "1706.03762", "--vault", str(tmp_path), "--cache-dir", str(tmp_path / "cache")],
+    )
     assert result.exit_code == 0, result.output
     assert (tmp_path / "Papers" / "2017-tiny-transformers-explained" / "00 Overview.md").exists()
