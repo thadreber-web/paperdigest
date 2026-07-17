@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- `digest --project-dir` (or the `project_dir` config key) links notes to the
+  scaffolded project for the same paper: the overview gains a `## Build it`
+  section, and concept notes link the stub module(s) whose cited `§x.y`
+  paper sections match the concept, resolved by scanning the project on disk.
 - Scaffold projects now include a generated `AGENTS.md` coding-agent brief
   (dependency-ordered implementation plan, TODO counts, definition of done,
   ground rules), assembled deterministically with no extra LLM call;

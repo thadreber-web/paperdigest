@@ -99,6 +99,9 @@ def digest(
     max_input_chars: int = typer.Option(None, "--max-input-chars", help="paper body char budget before trimming"),
     max_tokens: int = typer.Option(None, "--max-tokens", help="LLM output token cap"),
     cache_dir: Path = typer.Option(None, "--cache-dir", help="directory for cached fetched HTML"),
+    project_dir: Path = typer.Option(
+        None, "--project-dir", help="Where scaffolded projects live; notes link to <project-dir>/<year>-<slug>"
+    ),
 ):
     """Digest an AI/ML paper into plain-English Obsidian notes."""
     progress = _no_progress if quiet else _progress
@@ -115,6 +118,7 @@ def digest(
             max_input_chars=max_input_chars,
             max_tokens=max_tokens,
             cache_dir=cache_dir,
+            project_dir=project_dir,
         )
         arxiv_id, paper = _fetch_and_extract(cfg, ref, refresh, progress)
         render.check_output_free(render.paper_folder(arxiv_id, paper.title, cfg.vault), force)
@@ -135,7 +139,7 @@ def digest(
             workers=4 if cfg.backend != "local" else 1,
             figure_paths=figure_paths,
         )
-        folder = render.render_digest(d, cfg.vault, force=force)
+        folder = render.render_digest(d, cfg.vault, force=force, project_dir=cfg.project_dir)
         print(folder)
 
 

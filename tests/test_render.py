@@ -4,7 +4,15 @@ import pytest
 
 from paperdigest.digest import ConceptNote, Digest, FigureNote
 from paperdigest.extract import Paper, Section
-from paperdigest.render import OutputExistsError, folder_name, note_name, render_digest, slugify
+from paperdigest.render import (
+    OutputExistsError,
+    _project_section_index,
+    _sections_match,
+    folder_name,
+    note_name,
+    render_digest,
+    slugify,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FIGURE_PATH = FIXTURES / "figure1.png"
@@ -155,6 +163,71 @@ def test_render_embeds_unmatched_figure_in_overview(tmp_path):
     assert "## Figure: Fig 2: results." in overview
     assert "![[fig1.png]]" in overview
     assert "This shows results." in overview
+
+
+def _fake_project(tmp_path):
+    proj = tmp_path / "projects" / "2017-tiny-transformers-explained"
+    (proj / "src" / "pkg").mkdir(parents=True)
+    (proj / "src" / "pkg" / "layers.py").write_text("# TODO(paper §3.2): attention\n")
+    (proj / "src" / "pkg" / "utils.py").write_text("# no section refs\n")
+    return proj
+
+
+def test_overview_build_it_section_when_project_dir_set(tmp_path):
+    folder = render_digest(_digest(), tmp_path, project_dir=tmp_path / "projects")
+    overview = (folder / "00 Overview.md").read_text()
+    assert "## Build it" in overview
+    assert "2017-tiny-transformers-explained" in overview
+    assert "paperdigest scaffold 1706.03762 --dest" in overview
+    assert overview.index("## Why it matters") < overview.index("## Build it") < overview.index("## Concepts")
+
+
+def test_no_project_dir_output_unchanged(tmp_path):
+    folder = render_digest(_digest(), tmp_path)
+    overview = (folder / "00 Overview.md").read_text()
+    assert "Build it" not in overview
+    concept = (folder / "01 Self-Attention.md").read_text()
+    assert "Build it" not in concept
+
+
+def test_concept_note_links_matching_module(tmp_path):
+    _fake_project(tmp_path)
+    d = _digest()
+    d.concepts[0] = ConceptNote("Self-Attention", "Attention body.", "3.2 Attention")
+    folder = render_digest(d, tmp_path, project_dir=tmp_path / "projects")
+    concept = (folder / "01 Self-Attention.md").read_text()
+    assert "*Build it: " in concept
+    assert "layers.py" in concept
+    assert "file://" in concept
+    assert "utils.py" not in concept
+    other_concept = (folder / "02 Layer Stacking.md").read_text()
+    assert "Build it" not in other_concept  # "2 Method" doesn't cite §3.2
+
+
+def test_concept_links_skipped_when_project_missing(tmp_path):
+    folder = render_digest(_digest(), tmp_path, project_dir=tmp_path / "projects")  # nothing on disk
+    overview = (folder / "00 Overview.md").read_text()
+    assert "## Build it" in overview
+    concept = (folder / "01 Self-Attention.md").read_text()
+    assert "Build it" not in concept
+
+
+def test_project_section_index_skips_init_and_tracking(tmp_path):
+    proj = tmp_path / "proj"
+    (proj / "src" / "pkg").mkdir(parents=True)
+    (proj / "src" / "pkg" / "__init__.py").write_text("# §1\n")
+    (proj / "src" / "pkg" / "tracking.py").write_text("# §1\n")
+    (proj / "src" / "pkg" / "model.py").write_text("# §1.1\n")
+    assert set(_project_section_index(proj)) == {"src/pkg/model.py"}
+
+
+def test_project_section_index_no_src_dir(tmp_path):
+    assert _project_section_index(tmp_path / "proj") == {}
+
+
+def test_sections_match_empty_inputs():
+    assert _sections_match("", "3.2") is False
+    assert _sections_match("3.2", "") is False
 
 
 def test_render_multiple_figures_numbered_and_extensions_preserved(tmp_path):

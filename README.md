@@ -68,6 +68,15 @@ off; it's also the budget option on cloud backends, where images are
 token-expensive. `max_figures` (default 8) caps how many figures per paper
 are explained, by document order.
 
+### Linking to a scaffolded project
+
+Pass `--project-dir` (or set `project_dir` in `config.toml`) and notes gain a
+`## Build it` section pointing at `<project-dir>/<year>-<title-slug>` — the
+project `scaffold` would create for the same paper. If that project exists on
+disk, concept notes also get a `*Build it: …*` line linking the stub module(s)
+whose cited `§x.y` paper sections match the concept, so you can jump straight
+from the explanation to the code that implements it.
+
 ## Scaffold a research project
 
 Turn a paper into a standalone, git-initialized project skeleton (Cookiecutter-DS-style
