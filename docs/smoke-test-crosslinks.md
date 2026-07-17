@@ -186,3 +186,21 @@ matcher never ran), recorded here — not fixed as part of this test.
 - Scaffold fail-loud behavior held in Run 1: exit 1, nothing written, debug dump
   path printed (though the dump itself contained "(no raw model output
   captured)" for the truncation case — a lesser observation worth a look).
+
+## Retest after section-prefix fix (2026-07-17, commit 5a44bea)
+
+The zero-concept-links finding above was diagnosed as a matching bug: the live
+model emits concept headings like `Section 3.2.1`, but `_section_num` only
+accepted digit-first headings (`3.2 Attention`), so every match failed. Fix:
+optional case-insensitive `Section`/`Sec.`/`§` prefix in the regex, with
+live-derived regression tests (23/23 render tests, 100% coverage on render.py).
+
+- Command: same digest command as the rerun above (`--max-tokens 32768 --force`), exit 0, 18 progress lines.
+- Outcome: **SUCCESS** — 5 of 8 concept notes now carry `*Build it: …*` module links:
+  - `01 Transformer Architecture` → attention.py, config.py, embeddings.py, layers.py, transformer.py
+  - `02 Scaled Dot-Product Attention` → attention.py
+  - `03 Multi-Head Attention` → attention.py, transformer.py
+  - `04 Positional Encoding` → embeddings.py, transformer.py
+  - `05 Encoder and Decoder Stacks` → config.py, layers.py, transformer.py
+- The 3 unlinked concepts cover sections no stub module cites — correct best-effort behavior.
+- Concept titles differ from the earlier rerun (LLM nondeterminism across runs); links are consistent with each run's own sections.
