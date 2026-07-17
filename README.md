@@ -33,6 +33,10 @@ output, and very small models fail cleanly with an `error:` message. Set
 `max_input_chars` in `config.toml` to fit your model's context window (e.g.
 24000 for ~8k-token contexts) — long papers are trimmed with a warning; set
 `max_tokens` alongside it to cap output length for the same small context.
+Big *thinking* models need the opposite: reasoning tokens count against the
+output cap, so if a run aborts with a `truncated at max_tokens` error, raise
+it (e.g. `--max-tokens 32768` — see `docs/smoke-test-crosslinks.md` for a
+live example on a 122B).
 
 Output lands in `<vault>/Papers/<year>-<title-slug>/` plus new term notes in
 `<vault>/Glossary/`. Re-running the same paper refuses to overwrite unless you
@@ -94,7 +98,9 @@ failure aborts loudly (nothing half-written); the raw model output is saved to
 existing project unless you pass `--force`.
 
 You don't need a big model: scaffolding is tested live end-to-end on a 9B via
-llama.cpp (see `docs/smoke-test-scaffold.md`). JSON stages request structured
+llama.cpp (see `docs/smoke-test-scaffold.md`; the cross-linking features are
+live-tested on a 122B via vLLM in `docs/smoke-test-crosslinks.md`). JSON
+stages request structured
 output (`response_format: json_object`) from the server when supported, which
 is what makes small local models reliable here; generated code is validated
 (syntax + prompt-echo rejection) before anything is written. Besides
@@ -165,3 +171,5 @@ publishes a revision.
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/pytest          # fully offline: fixtures + fake LLM backend
 ```
+
+Known minor cleanups (all reviewed, none load-bearing) are tracked in `TODOS.md`.
