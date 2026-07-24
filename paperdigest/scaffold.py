@@ -308,7 +308,9 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
         progress(f"Stage 3/5: writing stub {i}/{total}: {m['filename']}")
         return _stage_python(
             backend, f"module:{m['filename']}", _MODULE_SYSTEM,
-            f"TARGET PATH (context only — do not reproduce this line in your output): src/{pkg}/{m['filename']}\n"
+            "The labeled fields below are context only — reproduce none of the labels "
+            "or the path in your output.\n\n"
+            f"TARGET PATH: src/{pkg}/{m['filename']}\n"
             f"RESPONSIBILITY: {m.get('responsibility', '')}\n"
             "PUBLIC API:\n" + "\n".join(f"- {sig}" for sig in m.get("api", []))
             + f"\n\n{analysis_ctx}\n\nPAPER TITLE: {paper.title}\n\nABSTRACT: {paper.abstract}",
@@ -321,7 +323,8 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
     progress("Stage 3/5: writing tests/test_smoke.py")
     files["tests/test_smoke.py"] = _stage_python(
         backend, "smoke-test", _SMOKE_TEST_SYSTEM,
-        f"PACKAGE: {pkg} (import as `from {pkg} import <module>`)\n\n{analysis_ctx}",
+        "The labeled fields below are context only — reproduce none of the labels in your output.\n\n"
+        f"PACKAGE: {pkg} (modules import as `from {pkg} import <module_name>`)\n\n{analysis_ctx}",
         filename="tests/test_smoke.py",
     )
     return files, analysis, modules

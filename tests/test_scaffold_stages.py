@@ -328,8 +328,8 @@ def test_build_stub_files_parallel_returns_modules_in_order():
     backend = _OrderedThenKeyedBackend(
         ordered=[ANALYZE, _multi_module_plan(filenames)],
         keyed={
-            **{f"FILE TO WRITE: src/pkg/{fn}": _stub_code(fn) for fn in filenames},
-            "PACKAGE: pkg (import as": SMOKE_TEST,
+            **{f"TARGET PATH: src/pkg/{fn}": _stub_code(fn) for fn in filenames},
+            "PACKAGE: pkg": SMOKE_TEST,
         },
     )
     files, _analysis, _modules = scaffold._build_stub_files(
@@ -346,8 +346,8 @@ def test_build_stub_files_parallel_propagates_worker_error():
     backend = _OrderedThenKeyedBackend(
         ordered=[ANALYZE, _multi_module_plan(filenames)],
         keyed={
-            "FILE TO WRITE: src/pkg/model.py": _stub_code("model.py"),
-            "FILE TO WRITE: src/pkg/data.py": "def broken(:\n    pass",  # unparseable
+            "TARGET PATH: src/pkg/model.py": _stub_code("model.py"),
+            "TARGET PATH: src/pkg/data.py": "def broken(:\n    pass",  # unparseable
         },
     )
     with pytest.raises(scaffold.ScaffoldError) as exc:
