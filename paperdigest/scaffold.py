@@ -66,7 +66,9 @@ Rules:
 - Docstrings cite the paper section or equation each item comes from (e.g. "See paper §3.2, Eq. 4").
 - Function/method bodies are stubs: a `# TODO(paper §x.y): <what to implement>` comment, then `raise NotImplementedError`.
 - Simple glue (dataclasses, config parsing, obvious helpers) may be fully implemented.
-- The file must parse as valid Python. Standard-library imports only unless the API requires otherwise."""
+- The file must parse as valid Python. Standard-library imports only unless the API requires otherwise.
+- Never start the file with the path or filename as a bare line or comment (e.g. do not write
+  "src/pkg/foo.py" or "# src/pkg/foo.py"). Begin directly with the module docstring or the first import."""
 
 _SMOKE_TEST_SYSTEM = """\
 You write tests/test_smoke.py for a skeleton research-code project.
@@ -306,7 +308,7 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
         progress(f"Stage 3/5: writing stub {i}/{total}: {m['filename']}")
         return _stage_python(
             backend, f"module:{m['filename']}", _MODULE_SYSTEM,
-            f"FILE TO WRITE: src/{pkg}/{m['filename']}\n"
+            f"TARGET PATH (context only — do not reproduce this line in your output): src/{pkg}/{m['filename']}\n"
             f"RESPONSIBILITY: {m.get('responsibility', '')}\n"
             "PUBLIC API:\n" + "\n".join(f"- {sig}" for sig in m.get("api", []))
             + f"\n\n{analysis_ctx}\n\nPAPER TITLE: {paper.title}\n\nABSTRACT: {paper.abstract}",
