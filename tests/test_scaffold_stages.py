@@ -357,6 +357,23 @@ def test_build_stub_files_parallel_propagates_worker_error():
     assert exc.value.stage == "module:data.py"
 
 
+def test_project_dependencies_scans_third_party_only():
+    files = {
+        "src/pkg/model.py": (
+            "from __future__ import annotations\n"
+            "import os\nimport torch\nimport torch.nn as nn\n"
+            "from .layers import Block\nfrom pkg.util import helper\n"
+            "import yaml\n"
+        ),
+        "train.py": "import numpy as np\n",
+        "configs/base.yaml": "import evil\n",  # non-.py ignored
+        "README.md": "import alsoevil\n",       # non-.py ignored
+    }
+    # stdlib (os), own package (pkg.util), relative (.layers), and __future__ excluded;
+    # yaml maps to its pip name; result deduped and sorted.
+    assert scaffold._project_dependencies(files, "pkg") == ["numpy", "pyyaml", "torch"]
+
+
 def test_plan_stage_rejects_duplicate_module_filenames():
     dup_plan = json.dumps(
         {

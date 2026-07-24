@@ -36,6 +36,7 @@ class ScaffoldProject:
     files: dict[str, str] = field(default_factory=dict)  # relative path -> content
     analysis: dict = field(default_factory=dict)
     modules: list[dict] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)  # pip package names the generated code imports
 
 
 _ANALYZE_SYSTEM = """\
@@ -62,13 +63,19 @@ _MODULE_SYSTEM = """\
 You write ONE Python skeleton file for a project reimplementing a research paper.
 Output ONLY the file content (no markdown fences, no commentary).
 Rules:
+- Begin with the module docstring, then `from __future__ import annotations` on the next line.
 - Implement the given public API as signatures with complete docstrings.
 - Docstrings cite the paper section or equation each item comes from (e.g. "See paper §3.2, Eq. 4").
 - Function/method bodies are stubs: a `# TODO(paper §x.y): <what to implement>` comment, then `raise NotImplementedError`.
 - Simple glue (dataclasses, config parsing, obvious helpers) may be fully implemented.
-- The file must parse as valid Python. Standard-library imports only unless the API requires otherwise.
+- Import only what the file needs at import time. Because of `from __future__ import annotations`,
+  type hints are never evaluated on import, so a signature like `x: torch.Tensor` needs NO import —
+  do not import a library merely to annotate with it. A stub body that only raises
+  NotImplementedError needs no imports either. Import a third-party package only when a top-level
+  construct genuinely requires it now (e.g. a base class such as `nn.Module`).
+- The file must parse as valid Python.
 - Never start the file with the path or filename as a bare line or comment (e.g. do not write
-  "src/pkg/foo.py" or "# src/pkg/foo.py"). Begin directly with the module docstring or the first import."""
+  "src/pkg/foo.py" or "# src/pkg/foo.py"). Begin directly with the module docstring."""
 
 _SMOKE_TEST_SYSTEM = """\
 You write tests/test_smoke.py for a skeleton research-code project.
@@ -243,6 +250,42 @@ def _stage_python(backend: Backend, stage: str, system: str, user: str, filename
     code = strip_fences(raw)
     _validate_python(stage, code, raw, filename)
     return code
+
+
+# Import top-level names that differ from their pip package name.
+_PIP_NAMES = {
+    "yaml": "pyyaml", "sklearn": "scikit-learn", "cv2": "opencv-python",
+    "PIL": "pillow", "skimage": "scikit-image",
+}
+
+
+def _project_dependencies(files: dict[str, str], pkg: str) -> list[str]:
+    """Third-party packages the generated .py files import, as sorted pip names.
+
+    Scans every generated Python file for imports whose top-level package is neither the
+    standard library, the project's own package, nor a relative import. Populates
+    pyproject.toml so the scaffold installs and its smoke test can actually import.
+    """
+    found: set[str] = set()
+    for rel, code in files.items():
+        if not rel.endswith(".py"):
+            continue
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            continue  # files are validated elsewhere; never block the dep scan on a parse error
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                tops = [a.name.split(".", 1)[0] for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                tops = [node.module.split(".", 1)[0]]
+            else:
+                continue
+            for top in tops:
+                if top in sys.stdlib_module_names or top in (pkg, "__future__"):
+                    continue
+                found.add(_PIP_NAMES.get(top, top))
+    return sorted(found)
 
 
 def _paper_ctx(paper: Paper, body: str) -> str:
@@ -457,6 +500,7 @@ def build_scaffold(paper: Paper, backend: Backend, max_chars: int,
         arxiv_id=paper.arxiv_id, title=paper.title, url=paper.url,
         package=pkg, model=backend.model, files=files,
         analysis=analysis, modules=modules,
+        dependencies=_project_dependencies(files, pkg),
     )
     project.files["AGENTS.md"] = build_agents_md(project, vault)
     return project
@@ -498,7 +542,10 @@ def write_project(project: ScaffoldProject, folder: Path, force: bool,
         (pkg_dir / "__init__.py").write_text("")
         (pkg_dir / "tracking.py").write_text(templates.TRACKING_PY)
         (folder / ".gitignore").write_text(templates.GITIGNORE)
-        (folder / "pyproject.toml").write_text(templates.PYPROJECT.format(name=project.package))
+        deps = ", ".join(f'"{d}"' for d in project.dependencies)
+        (folder / "pyproject.toml").write_text(
+            templates.PYPROJECT.format(name=project.package, dependencies=deps)
+        )
         for rel, content in project.files.items():
             path = folder / rel
             path.parent.mkdir(parents=True, exist_ok=True)

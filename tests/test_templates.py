@@ -10,9 +10,10 @@ def test_tracking_template_is_valid_python():
 
 
 def test_pyproject_template_formats_with_package_name():
-    text = templates.PYPROJECT.format(name="my_paper")
+    text = templates.PYPROJECT.format(name="my_paper", dependencies='"torch", "numpy"')
     assert 'name = "my_paper"' in text
     assert 'packages = ["src/my_paper"]' in text
+    assert 'dependencies = ["torch", "numpy"]' in text
 
 
 def test_tracking_log_run_round_trips(tmp_path):
