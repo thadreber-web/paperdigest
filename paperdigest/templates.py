@@ -80,3 +80,36 @@ def get_logger(name: str, run_id: str = "adhoc") -> logging.Logger:
             logger.addHandler(handler)
     return logger
 '''
+
+CONFIG_PY = '''\
+"""Zero-dependency config loader: flat `key: value` files with typed values."""
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+
+def load_config(path):
+    """Read a flat `key: value` config file into a dict of typed values.
+
+    One `key: value` per line; blank lines and `#` comments are ignored. Values
+    are read with Python literal rules (int, float including `1e-9`, list, quoted
+    string) plus lowercase `true`/`false`; anything else stays a bare string.
+    """
+    config = {}
+    for raw in Path(path).read_text().splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line or ":" not in line:
+            continue
+        key, val = line.split(":", 1)
+        key, val = key.strip(), val.strip()
+        low = val.lower()
+        if low in ("true", "false"):
+            config[key] = low == "true"
+            continue
+        try:
+            config[key] = ast.literal_eval(val)
+        except (ValueError, SyntaxError):
+            config[key] = val
+    return config
+'''

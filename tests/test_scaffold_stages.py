@@ -357,6 +357,20 @@ def test_build_stub_files_parallel_propagates_worker_error():
     assert exc.value.stage == "module:data.py"
 
 
+def test_verify_configs_load_rejects_unreadable_config():
+    files = {
+        "configs/base.yaml": "not a config at all\njust prose here\n",  # no key: value -> empty
+        "configs/smoke.yaml": "epochs: 1\n",
+    }
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold._verify_configs_load(files)
+    assert exc.value.stage == "harness"
+
+
+def test_verify_configs_load_accepts_flat_config():
+    scaffold._verify_configs_load({"configs/base.yaml": "lr: 0.001\nepochs: 10\n"})  # no raise
+
+
 def test_project_dependencies_scans_third_party_only():
     files = {
         "src/pkg/model.py": (

@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -95,11 +96,13 @@ Respond with ONLY valid JSON (no markdown fences, no commentary) with exactly th
  "smoke_readme": "<content of experiments/exp001_smoke/README.md>"}
 Rules:
 - train.py and evaluate.py are COMPLETE runnable code (not stubs): argparse with a --config option
-  taking a YAML path, calls into the project modules' public API, and logs results via
-  `from <package>.tracking import log_run`. Parse the config with a minimal `key: value` line parser
-  (standard library only — do not import yaml).
+  taking a config-file path, calls into the project modules' public API, and logs results via
+  `from <package>.tracking import log_run`. Load the config with the provided helper,
+  `from <package>._config import load_config` (config = load_config(args.config)). Do NOT hand-write a
+  config parser and do NOT import yaml — the helper already exists.
 - Both files must parse as valid Python.
-- base_yaml holds the paper's stated hyperparameters; smoke_yaml overrides them for a seconds-long toy run.
+- base_yaml and smoke_yaml are flat `key: value` files, one entry per line, no nested sections.
+  base_yaml holds the paper's stated hyperparameters; smoke_yaml overrides them for a seconds-long toy run.
 - smoke_readme explains what the smoke run checks and gives the exact command to run it."""
 
 _DOCS_SYSTEM = """\
@@ -288,6 +291,32 @@ def _project_dependencies(files: dict[str, str], pkg: str) -> list[str]:
     return sorted(found)
 
 
+def _verify_configs_load(files: dict[str, str]) -> None:
+    """Round-trip check: the shipped loader must read each emitted config into a non-empty dict.
+
+    Runs templates.CONFIG_PY's load_config against the generated configs/*.yaml, so a config the
+    project's own loader reads as nothing (an all-comment/garbage file, or a JSON blob with no
+    `key: value` lines) fails the run loudly instead of shipping a harness whose settings load empty.
+    """
+    ns: dict = {}
+    exec(templates.CONFIG_PY, ns)  # our own trusted template, not model output
+    load_config = ns["load_config"]
+    for rel, content in files.items():
+        if not (rel.startswith("configs/") and rel.endswith((".yaml", ".yml"))):
+            continue
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml") as tf:
+            tf.write(content)
+            tf.flush()
+            parsed = load_config(tf.name)
+        if not parsed:
+            raise ScaffoldError(
+                "harness",
+                f"{rel} did not parse into any key/value pairs via the project's config loader "
+                "(the harness must emit flat `key: value` lines)",
+                raw=content,
+            )
+
+
 def _paper_ctx(paper: Paper, body: str) -> str:
     return f"PAPER TITLE: {paper.title}\n\nABSTRACT: {paper.abstract}\n\nFULL TEXT:\n{body}"
 
@@ -322,7 +351,7 @@ def _plan_modules(paper: Paper, backend: Backend, body: str, analysis: dict,
     for m in modules:
         seen[m["filename"]] = seen.get(m["filename"], 0) + 1
     duplicates = sorted(name for name, count in seen.items() if count > 1)
-    reserved = sorted(name for name in seen if name in ("__init__.py", "tracking.py"))
+    reserved = sorted(name for name in seen if name in ("__init__.py", "tracking.py", "_config.py"))
     if duplicates or reserved:
         problems = [f"{name!r} (used {seen[name]}x)" for name in duplicates]
         problems += [f"{name!r} (reserved, always created by paperdigest)" for name in reserved]
@@ -438,7 +467,8 @@ def build_agents_md(project: ScaffoldProject, vault: Path | None) -> str:
         "## Ground rules",
         "",
         f"- Do not modify `train.py`, `evaluate.py`, `src/{pkg}/tracking.py`,",
-        "  or `tests/test_smoke.py` — implement the stubs to fit the harness, not the reverse.",
+        f"  `src/{pkg}/_config.py`, or `tests/test_smoke.py` — implement the stubs to fit the harness,",
+        "  not the reverse.",
         "- Hyperparameters in `configs/base.yaml` are the paper's real values; do not change them.",
         "  `configs/smoke.yaml` is a toy run and must stay tiny.",
         "- Log every run through `tracking.log_run()` (the harness already does).",
@@ -486,6 +516,7 @@ def build_scaffold(paper: Paper, backend: Backend, max_chars: int,
     files["configs/base.yaml"] = str(harness["base_yaml"])
     files["configs/smoke.yaml"] = str(harness["smoke_yaml"])
     files["experiments/exp001_smoke/README.md"] = str(harness["smoke_readme"])
+    _verify_configs_load(files)
 
     progress("Stage 5/5: writing README and EXPERIMENTS...")
     docs = _stage_json(
@@ -541,6 +572,7 @@ def write_project(project: ScaffoldProject, folder: Path, force: bool,
         pkg_dir.mkdir(parents=True)
         (pkg_dir / "__init__.py").write_text("")
         (pkg_dir / "tracking.py").write_text(templates.TRACKING_PY)
+        (pkg_dir / "_config.py").write_text(templates.CONFIG_PY)
         (folder / ".gitignore").write_text(templates.GITIGNORE)
         deps = ", ".join(f'"{d}"' for d in project.dependencies)
         (folder / "pyproject.toml").write_text(
