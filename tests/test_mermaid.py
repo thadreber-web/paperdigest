@@ -31,6 +31,20 @@ def test_sanitize_replaces_double_quotes_inside_labels():
     assert "A[\"Say 'hi' (loudly)\"]" in fixed
 
 
+def test_sanitize_strips_stray_python_literal_wrapper():
+    # Small models sometimes emit labels wrapped like {'X'} / {"X"}, quoted or not.
+    code = (
+        "flowchart TD\n"
+        "    A[{'QK^T'}] --> B[\"{'Divide by sqrt(dk)'}\"]\n"
+        "    B --> C[{\"Apply Softmax\"}]\n"
+    )
+    fixed = mermaid.sanitize_block(code)
+    assert "A[QK^T]" in fixed                          # unwrapped, no special char -> bare
+    assert 'B["Divide by sqrt(dk)"]' in fixed          # unwrapped, has parens -> quoted
+    assert "C[Apply Softmax]" in fixed                 # unwrapped from double-quote form
+    assert "{'" not in fixed and "'}" not in fixed
+
+
 def test_validator_unavailable_without_node(monkeypatch):
     monkeypatch.setattr(mermaid, "_available", None)  # reset detection cache
     monkeypatch.setattr(mermaid.shutil, "which", lambda cmd: None)
