@@ -1,0 +1,8 @@
+# Model server identity for this run (excerpt from llama-server log)
+# Full server: llama.cpp (llama-server) on http://localhost:8001/v1
+
+srv    load_model: loading model '<hf-cache>/models--FreedomAISVR--Qwen3.5-9B-Instruct-MTP-NVFP4-GGUF/.../qwen35-9b-mtp-nvfp4.gguf'
+llama_context: n_ctx_seq (131072) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+llama_context: n_ctx_seq (131072) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+srv    load_model: loaded multimodal model, '<hf-cache>/models--FreedomAISVR--Qwen3.5-9B-Instruct-MTP-NVFP4-GGUF/.../mmproj-qwen35-9b-f16.gguf'
+slot   load_model: id  0 | task -1 | new slot, n_ctx = 131072

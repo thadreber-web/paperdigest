@@ -1,7 +1,7 @@
 # paperdigest — Figure Explanations Spec
 
 Date: 2026-07-11
-Status: Draft (spec only — implementation not started, per user)
+Status: Implemented (shipped 2026-07-25 release; see CHANGELOG). Spec kept for provenance.
 
 ## Purpose
 

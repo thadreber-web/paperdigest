@@ -5,6 +5,12 @@ Repository state audited: `ce55fef` (`master`)
 Scope: current source, tests, README, design specifications, implementation plans, and Git history
 Method: read-only source investigation plus three independent audit tracks covering runtime architecture, deferred work/history, and adversarial product ideation
 
+> **⚠️ Superseded (2026-07-25).** Historical snapshot of `ce55fef` (2026-07-13);
+> kept for provenance. Some findings are now out of date — notably, figure
+> extraction and vision-based explanations have since shipped (see CHANGELOG),
+> so any claim here that figures are unimplemented no longer holds. Line-number
+> citations reflect the 2026-07-13 tree and have drifted from current source.
+
 ## Verdict
 
 paperdigest currently implements two useful but disconnected one-way pipelines:
