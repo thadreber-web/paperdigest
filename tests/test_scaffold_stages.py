@@ -398,6 +398,60 @@ def test_project_dependencies_excludes_sibling_modules_imported_by_bare_name():
     assert scaffold._project_dependencies(files, "pkg") == ["torch"]
 
 
+def test_rewrite_bare_imports_qualifies_sibling_module():
+    files = {
+        "src/p_x/attention.py": "def scaled_dot_product_attention():\n    pass\n",
+        "tests/test_smoke.py": "from attention import X\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["tests/test_smoke.py"] == "from p_x.attention import X\n"
+
+
+def test_rewrite_bare_imports_qualifies_infra_modules():
+    files = {
+        "src/p_x/model.py": "def build_model():\n    pass\n",
+        "train.py": "from tracking import log_run\nfrom _config import load_config\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["train.py"] == "from p_x.tracking import log_run\nfrom p_x._config import load_config\n"
+
+
+def test_rewrite_bare_imports_leaves_relative_import_unchanged():
+    files = {
+        "src/p_x/attention.py": "def x():\n    pass\n",
+        "src/p_x/model.py": "from .attention import x\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["src/p_x/model.py"] == "from .attention import x\n"
+
+
+def test_rewrite_bare_imports_leaves_already_qualified_import_unchanged():
+    files = {
+        "src/p_x/attention.py": "def x():\n    pass\n",
+        "tests/test_smoke.py": "from p_x.attention import x\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["tests/test_smoke.py"] == "from p_x.attention import x\n"
+
+
+def test_rewrite_bare_imports_leaves_stdlib_and_third_party_unchanged():
+    files = {
+        "src/p_x/attention.py": "def x():\n    pass\n",
+        "tests/test_smoke.py": "import torch\nfrom typing import Optional\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["tests/test_smoke.py"] == "import torch\nfrom typing import Optional\n"
+
+
+def test_rewrite_bare_imports_qualifies_bare_import_statement():
+    files = {
+        "src/p_x/attention.py": "def x():\n    pass\n",
+        "tests/test_smoke.py": "import attention\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["tests/test_smoke.py"] == "import p_x.attention\n"
+
+
 def test_plan_stage_rejects_duplicate_module_filenames():
     dup_plan = json.dumps(
         {

@@ -303,6 +303,36 @@ def _project_dependencies(files: dict[str, str], pkg: str) -> list[str]:
     return sorted(found)
 
 
+def _rewrite_bare_imports(files: dict[str, str], pkg: str) -> None:
+    """Rewrite bare imports of the project's own modules to full package-qualified imports.
+
+    The model sometimes writes `from attention import X` (or `import attention`) instead of
+    `from <pkg>.attention import X` — that doesn't resolve once the project is pip installed.
+    Mutates `files` in place. Relative imports (`from .attention import X`) and already-qualified
+    imports (`from <pkg>.attention import X`) are left untouched, as are stdlib/third-party imports.
+    """
+    prefix = f"src/{pkg}/"
+    own = {rel[len(prefix):-len(".py")] for rel in files if rel.startswith(prefix) and rel.endswith(".py")}
+    own |= {"tracking", "_config"}  # infra modules written separately by write_project
+    if not own:
+        return
+    alt = "|".join(re.escape(m) for m in sorted(own, key=len, reverse=True))
+    from_re = re.compile(rf"^(\s*from\s+)({alt})(?=\s+import\b)")
+    import_re = re.compile(rf"^(\s*import\s+)({alt})(?=\s*(?:,|as\b|$|#))")
+    for rel, content in files.items():
+        if not rel.endswith(".py"):
+            continue
+        lines = content.split("\n")
+        changed = False
+        for i, line in enumerate(lines):
+            m = from_re.match(line) or import_re.match(line)
+            if m:
+                lines[i] = f"{m.group(1)}{pkg}.{m.group(2)}{line[m.end(2):]}"
+                changed = True
+        if changed:
+            files[rel] = "\n".join(lines)
+
+
 def _verify_configs_load(files: dict[str, str]) -> None:
     """Round-trip check: the shipped loader must read each emitted config into a non-empty dict.
 
@@ -538,6 +568,8 @@ def build_scaffold(paper: Paper, backend: Backend, max_chars: int,
     )
     files["README.md"] = str(docs["readme"])
     files["EXPERIMENTS.md"] = str(docs["experiments_md"])
+
+    _rewrite_bare_imports(files, pkg)
 
     project = ScaffoldProject(
         arxiv_id=paper.arxiv_id, title=paper.title, url=paper.url,

@@ -6,7 +6,8 @@ correctness or safety risk. Pick up opportunistically.
 
 ## Known bugs (deferred, real correctness impact)
 
-- [ ] **Generated files sometimes import sibling/infra modules by bare name** —
+- [x] **Generated files sometimes import sibling/infra modules by bare name** —
+  Fixed 2026-07-24: deterministic import rewriter.
   observed on a live 9B scaffold run (2026-07-24, arXiv:1706.03762). The model wrote
   `tests/test_smoke.py` with `from attention import ...`, `from model import ...`,
   `from tracking import ...` instead of `from attention_is_all_you_need import attention`
