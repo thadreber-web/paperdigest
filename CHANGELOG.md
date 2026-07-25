@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-07-25
 
 ### Added
 - `digest --project-dir` (or the `project_dir` config key) links notes to the
@@ -22,15 +22,24 @@
 - Concept explanations and module stubs are generated with up to 4 parallel
   requests on cloud backends (local servers stay serial).
 - CI and the release workflow enforce a 93% test-coverage floor.
-- `max_tokens` config option: the LLM output-token cap (default 8192) is now
-  set explicitly on both backends instead of hard-coded (Anthropic) or left
-  to the server default (OpenAI-compatible).
+- `max_tokens` config option: the LLM output-token cap is now set explicitly
+  on both backends instead of hard-coded (Anthropic) or left to the server
+  default (OpenAI-compatible). See Changed for the current default.
 - Scaffold stages now get the same one-shot JSON repair round-trip as digest:
   a malformed response is sent back to the model once for correction before
   the run aborts.
 - Tag-triggered release workflow: pushing a `v*` tag lints, tests, builds,
   verifies the tag matches `pyproject.toml`, and attaches the wheel and sdist
   to a GitHub Release.
+- `examples/9b-attention-is-all-you-need/`: real, unedited output from a live
+  end-to-end run of both pipelines against arXiv:1706.03762 using a local 9B
+  model (Qwen3.5-9B-Instruct, NVFP4), with the run logs, as a worked example of
+  what paperdigest produces on self-hostable hardware.
+
+### Changed
+- Default `max_tokens` raised from 8192 to 16384 so mid-size local models
+  (e.g. a 9B) don't truncate long generated code files; still overridable
+  per run with `--max-tokens` or the config key.
 
 ### Fixed
 - `__version__` is now derived from package metadata instead of a hard-coded
@@ -39,6 +48,18 @@
 - Concept-to-section matching is tiered (number-stripped exact, exact, then
   longest-overlap containment), so short or numeric section titles can no
   longer attach the wrong section's text to a concept.
+- Generated code that imported sibling/infra modules by bare name (e.g.
+  `from attention import ...`) is now deterministically rewritten to the full
+  package path, so a scaffolded project's own smoke test imports correctly once
+  the project is installed.
+- Generated `EXPERIMENTS.md` no longer fabricates benchmark result numbers;
+  targets are cited to the paper's own tables instead.
+- The scaffold dependency scanner no longer lists the project's own modules as
+  pip dependencies in the generated `pyproject.toml`.
+- The config loader generated into scaffolded projects now accepts
+  `key = value` as well as `key: value`, matching either separator the model
+  may emit. (This is the *generated project's* loader; paperdigest's own
+  `config.toml` remains strict TOML.)
 
 ## 0.3.0 — 2026-07-15
 

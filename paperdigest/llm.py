@@ -47,7 +47,7 @@ def _image_media_type(image: bytes) -> str:
 
 
 class AnthropicBackend:
-    def __init__(self, model: str, max_tokens: int = 8192):
+    def __init__(self, model: str, max_tokens: int = 16384):
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise LLMError("ANTHROPIC_API_KEY is not set")
         import anthropic
@@ -101,7 +101,7 @@ class AnthropicBackend:
 
 
 class OpenAICompatibleBackend:
-    def __init__(self, model: str, base_url: str | None = None, max_tokens: int = 8192):
+    def __init__(self, model: str, base_url: str | None = None, max_tokens: int = 16384):
         api_key = os.environ.get("OPENAI_API_KEY")
         if base_url is None and not api_key:
             raise LLMError("OPENAI_API_KEY is not set (or pass --base-url for a local server)")
@@ -172,7 +172,7 @@ class OpenAICompatibleBackend:
 
 
 def make_backend(
-    backend: str, model: str, base_url: str | None = None, max_tokens: int = 8192
+    backend: str, model: str, base_url: str | None = None, max_tokens: int = 16384
 ) -> Backend:
     if backend == "local":
         return OpenAICompatibleBackend(model, base_url or LOCAL_BASE_URL, max_tokens)

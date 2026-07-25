@@ -42,6 +42,7 @@ def test_write_project_creates_full_tree(tmp_path):
         "configs/base.yaml",
         "src/tiny_transformers_explained/__init__.py",
         "src/tiny_transformers_explained/tracking.py",
+        "src/tiny_transformers_explained/_config.py",
         "src/tiny_transformers_explained/model.py",
         "tests/test_smoke.py",
         "experiments/runs.jsonl",

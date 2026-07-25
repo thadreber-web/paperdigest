@@ -1,0 +1,12 @@
+d_model: 64
+d_ff: 128
+N: 2
+h: 2
+d_k: 32
+d_v: 32
+P_drop: 0.1
+epsilon_ls: 0.1
+beta_1: 0.9
+beta_2: 0.98
+epsilon: 1e-9
+warmup_steps: 100
