@@ -388,6 +388,16 @@ def test_project_dependencies_scans_third_party_only():
     assert scaffold._project_dependencies(files, "pkg") == ["numpy", "pyyaml", "torch"]
 
 
+def test_project_dependencies_excludes_sibling_modules_imported_by_bare_name():
+    files = {
+        "src/pkg/attention.py": "import torch\n",
+        "src/pkg/model.py": "from .attention import Block\n",
+        # the model sometimes imports siblings/infra by bare name instead of `from pkg import x`
+        "tests/test_smoke.py": "from attention import a\nfrom model import Transformer\nfrom tracking import log_run\n",
+    }
+    assert scaffold._project_dependencies(files, "pkg") == ["torch"]
+
+
 def test_plan_stage_rejects_duplicate_module_filenames():
     dup_plan = json.dumps(
         {

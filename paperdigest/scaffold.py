@@ -266,9 +266,14 @@ def _project_dependencies(files: dict[str, str], pkg: str) -> list[str]:
     """Third-party packages the generated .py files import, as sorted pip names.
 
     Scans every generated Python file for imports whose top-level package is neither the
-    standard library, the project's own package, nor a relative import. Populates
+    standard library, the project's own package/modules, nor a relative import. Populates
     pyproject.toml so the scaffold installs and its smoke test can actually import.
     """
+    # The model sometimes imports a sibling module by bare name (`from attention import x`)
+    # instead of `from <pkg> import attention`; those must not be mistaken for pip packages.
+    prefix = f"src/{pkg}/"
+    own = {pkg, "__future__", "tracking", "_config"}  # package, infra modules written separately
+    own |= {rel[len(prefix):-len(".py")] for rel in files if rel.startswith(prefix) and rel.endswith(".py")}
     found: set[str] = set()
     for rel, code in files.items():
         if not rel.endswith(".py"):
@@ -285,7 +290,7 @@ def _project_dependencies(files: dict[str, str], pkg: str) -> list[str]:
             else:
                 continue
             for top in tops:
-                if top in sys.stdlib_module_names or top in (pkg, "__future__"):
+                if top in sys.stdlib_module_names or top in own:
                     continue
                 found.add(_PIP_NAMES.get(top, top))
     return sorted(found)
