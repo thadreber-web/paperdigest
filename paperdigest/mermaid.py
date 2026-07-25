@@ -16,6 +16,7 @@ import subprocess
 
 _LABEL_RE = re.compile(r"\[([^\[\]\n]+)\]")
 _SPECIAL_RE = re.compile(r"[(){}<>:,]")
+_WRAPPED_RE = re.compile(r"^\{\s*(['\"])(.*)\1\s*\}$", re.DOTALL)
 _FENCE_RE = re.compile(r"(```mermaid[ \t]*\r?\n)(.*?)(\r?\n```)", re.DOTALL)
 
 _available: bool | None = None  # None = not yet detected; cached per process
@@ -36,10 +37,22 @@ process.stdin.on("end", async () => {
 """
 
 
+def _unwrap_label(inner: str) -> str:
+    """Strip a stray Python-literal wrapper the model sometimes emits: {'QK^T'} -> QK^T.
+
+    Handles the label with or without an outer quote pair the model may have added, so both
+    `["{'QK^T'}"]` and `[{'QK^T'}]` reduce to the bare label text. Non-wrapped labels are
+    returned unchanged.
+    """
+    core = inner[1:-1] if len(inner) >= 2 and inner[0] == inner[-1] == '"' else inner
+    w = _WRAPPED_RE.match(core.strip())
+    return w.group(2) if w else inner
+
+
 def _quote_label(m: re.Match) -> str:
-    inner = m.group(1)
+    inner = _unwrap_label(m.group(1))
     if inner.startswith('"') or not _SPECIAL_RE.search(inner):
-        return m.group(0)
+        return m.group(0) if inner == m.group(1) else "[" + inner + "]"
     return '["' + inner.replace('"', "'") + '"]'
 
 

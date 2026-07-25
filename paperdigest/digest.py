@@ -84,15 +84,18 @@ DIAGRAM_GUIDANCE = {
     "mermaid": (
         "- If the concept is structural (architecture, data flow, training loop, algorithm), "
         "include a Mermaid diagram in a ```mermaid fenced code block "
-        "(flowchart TD or LR; simple node/edge syntax only; quote any node label "
-        "containing parentheses, math, or special characters)."
+        "(flowchart TD or LR; simple node/edge syntax only). Write each node label as plain text, "
+        "e.g. A[\"QK^T\"] — never wrap the label in braces such as A[{'QK^T'}]. Quote any label "
+        "containing parentheses, math, or special characters."
     ),
 }
 
 _FIGURE_SYSTEM = """\
 You explain figures from research papers to a {level}-level learner. Be concise: at most 250 words. \
-Explain what the figure shows and why it matters for the paper. If any detail is unclear in the image, \
-say so instead of guessing."""
+Explain what the figure shows and why it matters for the paper. Many ML figures are faint or \
+low-contrast — attention maps, for instance, look like pale colored lines linking words — which is \
+normal, not corruption; describe what is present rather than calling the image blank, a placeholder, \
+or corrupted. Only note a specific detail as unreadable if it genuinely is, and still explain the rest."""
 
 _GLOSSARY_SYSTEM = """\
 You define research-paper jargon in plain English for a {level}-level reader.

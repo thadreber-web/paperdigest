@@ -41,9 +41,10 @@ live example on a 122B).
 Output lands in `<vault>/Papers/<year>-<title-slug>/` plus new term notes in
 `<vault>/Glossary/`. Re-running the same paper refuses to overwrite unless you
 pass `--force`. Glossary term notes are never overwritten. Pass `--quiet` to
-suppress progress output, `--version` to print the installed version, or
-`--max-input-chars`/`--max-tokens`/`--cache-dir` to override those config
-keys per run (both `digest` and `scaffold` accept all of these).
+suppress progress output, or `--max-input-chars`/`--max-tokens`/`--cache-dir`
+to override those config keys per run (both `digest` and `scaffold` accept
+these). `paperdigest --version` prints the installed version — it is a
+top-level flag, not available on the subcommands.
 
 ### Diagrams: Mermaid or ASCII
 

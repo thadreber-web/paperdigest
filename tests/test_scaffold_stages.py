@@ -328,8 +328,8 @@ def test_build_stub_files_parallel_returns_modules_in_order():
     backend = _OrderedThenKeyedBackend(
         ordered=[ANALYZE, _multi_module_plan(filenames)],
         keyed={
-            **{f"FILE TO WRITE: src/pkg/{fn}": _stub_code(fn) for fn in filenames},
-            "PACKAGE: pkg (import as": SMOKE_TEST,
+            **{f"TARGET PATH: src/pkg/{fn}": _stub_code(fn) for fn in filenames},
+            "PACKAGE: pkg": SMOKE_TEST,
         },
     )
     files, _analysis, _modules = scaffold._build_stub_files(
@@ -346,8 +346,8 @@ def test_build_stub_files_parallel_propagates_worker_error():
     backend = _OrderedThenKeyedBackend(
         ordered=[ANALYZE, _multi_module_plan(filenames)],
         keyed={
-            "FILE TO WRITE: src/pkg/model.py": _stub_code("model.py"),
-            "FILE TO WRITE: src/pkg/data.py": "def broken(:\n    pass",  # unparseable
+            "TARGET PATH: src/pkg/model.py": _stub_code("model.py"),
+            "TARGET PATH: src/pkg/data.py": "def broken(:\n    pass",  # unparseable
         },
     )
     with pytest.raises(scaffold.ScaffoldError) as exc:
@@ -355,6 +355,101 @@ def test_build_stub_files_parallel_propagates_worker_error():
             make_paper(), backend, "pkg", max_chars=100_000, progress=lambda m: None, workers=4,
         )
     assert exc.value.stage == "module:data.py"
+
+
+def test_verify_configs_load_rejects_unreadable_config():
+    files = {
+        "configs/base.yaml": "not a config at all\njust prose here\n",  # no key: value -> empty
+        "configs/smoke.yaml": "epochs: 1\n",
+    }
+    with pytest.raises(scaffold.ScaffoldError) as exc:
+        scaffold._verify_configs_load(files)
+    assert exc.value.stage == "harness"
+
+
+def test_verify_configs_load_accepts_flat_config():
+    scaffold._verify_configs_load({"configs/base.yaml": "lr: 0.001\nepochs: 10\n"})  # no raise
+
+
+def test_project_dependencies_scans_third_party_only():
+    files = {
+        "src/pkg/model.py": (
+            "from __future__ import annotations\n"
+            "import os\nimport torch\nimport torch.nn as nn\n"
+            "from .layers import Block\nfrom pkg.util import helper\n"
+            "import yaml\n"
+        ),
+        "train.py": "import numpy as np\n",
+        "configs/base.yaml": "import evil\n",  # non-.py ignored
+        "README.md": "import alsoevil\n",       # non-.py ignored
+    }
+    # stdlib (os), own package (pkg.util), relative (.layers), and __future__ excluded;
+    # yaml maps to its pip name; result deduped and sorted.
+    assert scaffold._project_dependencies(files, "pkg") == ["numpy", "pyyaml", "torch"]
+
+
+def test_project_dependencies_excludes_sibling_modules_imported_by_bare_name():
+    files = {
+        "src/pkg/attention.py": "import torch\n",
+        "src/pkg/model.py": "from .attention import Block\n",
+        # the model sometimes imports siblings/infra by bare name instead of `from pkg import x`
+        "tests/test_smoke.py": "from attention import a\nfrom model import Transformer\nfrom tracking import log_run\n",
+    }
+    assert scaffold._project_dependencies(files, "pkg") == ["torch"]
+
+
+def test_rewrite_bare_imports_qualifies_sibling_module():
+    files = {
+        "src/p_x/attention.py": "def scaled_dot_product_attention():\n    pass\n",
+        "tests/test_smoke.py": "from attention import X\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["tests/test_smoke.py"] == "from p_x.attention import X\n"
+
+
+def test_rewrite_bare_imports_qualifies_infra_modules():
+    files = {
+        "src/p_x/model.py": "def build_model():\n    pass\n",
+        "train.py": "from tracking import log_run\nfrom _config import load_config\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["train.py"] == "from p_x.tracking import log_run\nfrom p_x._config import load_config\n"
+
+
+def test_rewrite_bare_imports_leaves_relative_import_unchanged():
+    files = {
+        "src/p_x/attention.py": "def x():\n    pass\n",
+        "src/p_x/model.py": "from .attention import x\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["src/p_x/model.py"] == "from .attention import x\n"
+
+
+def test_rewrite_bare_imports_leaves_already_qualified_import_unchanged():
+    files = {
+        "src/p_x/attention.py": "def x():\n    pass\n",
+        "tests/test_smoke.py": "from p_x.attention import x\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["tests/test_smoke.py"] == "from p_x.attention import x\n"
+
+
+def test_rewrite_bare_imports_leaves_stdlib_and_third_party_unchanged():
+    files = {
+        "src/p_x/attention.py": "def x():\n    pass\n",
+        "tests/test_smoke.py": "import torch\nfrom typing import Optional\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["tests/test_smoke.py"] == "import torch\nfrom typing import Optional\n"
+
+
+def test_rewrite_bare_imports_qualifies_bare_import_statement():
+    files = {
+        "src/p_x/attention.py": "def x():\n    pass\n",
+        "tests/test_smoke.py": "import attention\n",
+    }
+    scaffold._rewrite_bare_imports(files, "p_x")
+    assert files["tests/test_smoke.py"] == "import p_x.attention\n"
 
 
 def test_plan_stage_rejects_duplicate_module_filenames():

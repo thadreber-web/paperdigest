@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -36,6 +37,7 @@ class ScaffoldProject:
     files: dict[str, str] = field(default_factory=dict)  # relative path -> content
     analysis: dict = field(default_factory=dict)
     modules: list[dict] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)  # pip package names the generated code imports
 
 
 _ANALYZE_SYSTEM = """\
@@ -44,9 +46,13 @@ Respond with ONLY valid JSON (no markdown fences, no commentary) in exactly this
 {"components": [{"name": "<method component>", "description": "<1-2 sentences>", "section": "<paper section heading>"}],
  "datasets": ["<dataset name>", ...],
  "hyperparameters": {"<name>": "<value as stated in the paper>"},
- "experiments": [{"name": "<short name>", "description": "<what it measures and which table/figure it reproduces>"}]}
+ "experiments": [{"name": "<short name>", "description": "<what it measures and which table/figure it reproduces>"}],
+ "results": [{"metric": "<what is measured, e.g. 'BLEU EN-DE'>", "value": "<exact value as the paper states it>", "source": "<table/section, e.g. 'Table 2'>"}]}
 Rules: pick 3-8 method components. List every dataset the paper uses.
-Include only hyperparameters the paper actually states."""
+Include only hyperparameters the paper actually states.
+For results, copy only metrics the paper explicitly reports — value verbatim, with its table/section, and
+be careful to keep each number attached to the exact task/dataset the paper reports it for. Use an empty
+list if the paper reports none. Never invent, approximate, or relabel a number."""
 
 _PLAN_SYSTEM = """\
 You plan the module layout of a Python project that will reimplement a research paper's method.
@@ -62,11 +68,19 @@ _MODULE_SYSTEM = """\
 You write ONE Python skeleton file for a project reimplementing a research paper.
 Output ONLY the file content (no markdown fences, no commentary).
 Rules:
+- Begin with the module docstring, then `from __future__ import annotations` on the next line.
 - Implement the given public API as signatures with complete docstrings.
 - Docstrings cite the paper section or equation each item comes from (e.g. "See paper §3.2, Eq. 4").
 - Function/method bodies are stubs: a `# TODO(paper §x.y): <what to implement>` comment, then `raise NotImplementedError`.
 - Simple glue (dataclasses, config parsing, obvious helpers) may be fully implemented.
-- The file must parse as valid Python. Standard-library imports only unless the API requires otherwise."""
+- Import only what the file needs at import time. Because of `from __future__ import annotations`,
+  type hints are never evaluated on import, so a signature like `x: torch.Tensor` needs NO import —
+  do not import a library merely to annotate with it. A stub body that only raises
+  NotImplementedError needs no imports either. Import a third-party package only when a top-level
+  construct genuinely requires it now (e.g. a base class such as `nn.Module`).
+- The file must parse as valid Python.
+- Never start the file with the path or filename as a bare line or comment (e.g. do not write
+  "src/pkg/foo.py" or "# src/pkg/foo.py"). Begin directly with the module docstring."""
 
 _SMOKE_TEST_SYSTEM = """\
 You write tests/test_smoke.py for a skeleton research-code project.
@@ -86,11 +100,13 @@ Respond with ONLY valid JSON (no markdown fences, no commentary) with exactly th
  "smoke_readme": "<content of experiments/exp001_smoke/README.md>"}
 Rules:
 - train.py and evaluate.py are COMPLETE runnable code (not stubs): argparse with a --config option
-  taking a YAML path, calls into the project modules' public API, and logs results via
-  `from <package>.tracking import log_run`. Parse the config with a minimal `key: value` line parser
-  (standard library only — do not import yaml).
+  taking a config-file path, calls into the project modules' public API, and logs results via
+  `from <package>.tracking import log_run`. Load the config with the provided helper,
+  `from <package>._config import load_config` (config = load_config(args.config)). Do NOT hand-write a
+  config parser and do NOT import yaml — the helper already exists.
 - Both files must parse as valid Python.
-- base_yaml holds the paper's stated hyperparameters; smoke_yaml overrides them for a seconds-long toy run.
+- base_yaml and smoke_yaml are flat `key: value` files, one entry per line, no nested sections.
+  base_yaml holds the paper's stated hyperparameters; smoke_yaml overrides them for a seconds-long toy run.
 - smoke_readme explains what the smoke run checks and gives the exact command to run it."""
 
 _DOCS_SYSTEM = """\
@@ -101,7 +117,10 @@ Rules:
 - readme: paper title + arXiv link, 3-5 sentence method summary, a repo map explaining every
   top-level file/folder, setup instructions (pip install -e '.[dev]'), and how to run the smoke experiment.
 - experiments_md: one section per planned experiment mirroring the paper's tables/figures, each with
-  a `- [ ]` status checkbox, which config to use, and the paper's reported numbers to compare against."""
+  a `- [ ]` status checkbox and which config to use. For target numbers, use ONLY the values in the
+  analysis `results` list — quote the metric and its source table exactly as given. If a planned
+  experiment has no matching `results` entry, point the reader to the paper's table/section to look the
+  number up instead of stating one. Never invent, guess, approximate, or relabel a metric value."""
 
 
 def _default_progress(msg: str) -> None:
@@ -243,6 +262,103 @@ def _stage_python(backend: Backend, stage: str, system: str, user: str, filename
     return code
 
 
+# Import top-level names that differ from their pip package name.
+_PIP_NAMES = {
+    "yaml": "pyyaml", "sklearn": "scikit-learn", "cv2": "opencv-python",
+    "PIL": "pillow", "skimage": "scikit-image",
+}
+
+
+def _project_dependencies(files: dict[str, str], pkg: str) -> list[str]:
+    """Third-party packages the generated .py files import, as sorted pip names.
+
+    Scans every generated Python file for imports whose top-level package is neither the
+    standard library, the project's own package/modules, nor a relative import. Populates
+    pyproject.toml so the scaffold installs and its smoke test can actually import.
+    """
+    # The model sometimes imports a sibling module by bare name (`from attention import x`)
+    # instead of `from <pkg> import attention`; those must not be mistaken for pip packages.
+    prefix = f"src/{pkg}/"
+    own = {pkg, "__future__", "tracking", "_config"}  # package, infra modules written separately
+    own |= {rel[len(prefix):-len(".py")] for rel in files if rel.startswith(prefix) and rel.endswith(".py")}
+    found: set[str] = set()
+    for rel, code in files.items():
+        if not rel.endswith(".py"):
+            continue
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            continue  # files are validated elsewhere; never block the dep scan on a parse error
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                tops = [a.name.split(".", 1)[0] for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                tops = [node.module.split(".", 1)[0]]
+            else:
+                continue
+            for top in tops:
+                if top in sys.stdlib_module_names or top in own:
+                    continue
+                found.add(_PIP_NAMES.get(top, top))
+    return sorted(found)
+
+
+def _rewrite_bare_imports(files: dict[str, str], pkg: str) -> None:
+    """Rewrite bare imports of the project's own modules to full package-qualified imports.
+
+    The model sometimes writes `from attention import X` (or `import attention`) instead of
+    `from <pkg>.attention import X` — that doesn't resolve once the project is pip installed.
+    Mutates `files` in place. Relative imports (`from .attention import X`) and already-qualified
+    imports (`from <pkg>.attention import X`) are left untouched, as are stdlib/third-party imports.
+    """
+    prefix = f"src/{pkg}/"
+    own = {rel[len(prefix):-len(".py")] for rel in files if rel.startswith(prefix) and rel.endswith(".py")}
+    own |= {"tracking", "_config"}  # infra modules written separately by write_project
+    if not own:
+        return
+    alt = "|".join(re.escape(m) for m in sorted(own, key=len, reverse=True))
+    from_re = re.compile(rf"^(\s*from\s+)({alt})(?=\s+import\b)")
+    import_re = re.compile(rf"^(\s*import\s+)({alt})(?=\s*(?:,|as\b|$|#))")
+    for rel, content in files.items():
+        if not rel.endswith(".py"):
+            continue
+        lines = content.split("\n")
+        changed = False
+        for i, line in enumerate(lines):
+            m = from_re.match(line) or import_re.match(line)
+            if m:
+                lines[i] = f"{m.group(1)}{pkg}.{m.group(2)}{line[m.end(2):]}"
+                changed = True
+        if changed:
+            files[rel] = "\n".join(lines)
+
+
+def _verify_configs_load(files: dict[str, str]) -> None:
+    """Round-trip check: the shipped loader must read each emitted config into a non-empty dict.
+
+    Runs templates.CONFIG_PY's load_config against the generated configs/*.yaml, so a config the
+    project's own loader reads as nothing (an all-comment/garbage file, or a JSON blob with no
+    `key: value` lines) fails the run loudly instead of shipping a harness whose settings load empty.
+    """
+    ns: dict = {}
+    exec(templates.CONFIG_PY, ns)  # our own trusted template, not model output
+    load_config = ns["load_config"]
+    for rel, content in files.items():
+        if not (rel.startswith("configs/") and rel.endswith((".yaml", ".yml"))):
+            continue
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml") as tf:
+            tf.write(content)
+            tf.flush()
+            parsed = load_config(tf.name)
+        if not parsed:
+            raise ScaffoldError(
+                "harness",
+                f"{rel} did not parse into any key/value pairs via the project's config loader "
+                "(the harness must emit flat `key: value` or `key = value` lines)",
+                raw=content,
+            )
+
+
 def _paper_ctx(paper: Paper, body: str) -> str:
     return f"PAPER TITLE: {paper.title}\n\nABSTRACT: {paper.abstract}\n\nFULL TEXT:\n{body}"
 
@@ -277,7 +393,7 @@ def _plan_modules(paper: Paper, backend: Backend, body: str, analysis: dict,
     for m in modules:
         seen[m["filename"]] = seen.get(m["filename"], 0) + 1
     duplicates = sorted(name for name, count in seen.items() if count > 1)
-    reserved = sorted(name for name in seen if name in ("__init__.py", "tracking.py"))
+    reserved = sorted(name for name in seen if name in ("__init__.py", "tracking.py", "_config.py"))
     if duplicates or reserved:
         problems = [f"{name!r} (used {seen[name]}x)" for name in duplicates]
         problems += [f"{name!r} (reserved, always created by paperdigest)" for name in reserved]
@@ -306,7 +422,9 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
         progress(f"Stage 3/5: writing stub {i}/{total}: {m['filename']}")
         return _stage_python(
             backend, f"module:{m['filename']}", _MODULE_SYSTEM,
-            f"FILE TO WRITE: src/{pkg}/{m['filename']}\n"
+            "The labeled fields below are context only — reproduce none of the labels "
+            "or the path in your output.\n\n"
+            f"TARGET PATH: src/{pkg}/{m['filename']}\n"
             f"RESPONSIBILITY: {m.get('responsibility', '')}\n"
             "PUBLIC API:\n" + "\n".join(f"- {sig}" for sig in m.get("api", []))
             + f"\n\n{analysis_ctx}\n\nPAPER TITLE: {paper.title}\n\nABSTRACT: {paper.abstract}",
@@ -319,7 +437,8 @@ def _build_stub_files(paper: Paper, backend: Backend, pkg: str, max_chars: int,
     progress("Stage 3/5: writing tests/test_smoke.py")
     files["tests/test_smoke.py"] = _stage_python(
         backend, "smoke-test", _SMOKE_TEST_SYSTEM,
-        f"PACKAGE: {pkg} (import as `from {pkg} import <module>`)\n\n{analysis_ctx}",
+        "The labeled fields below are context only — reproduce none of the labels in your output.\n\n"
+        f"PACKAGE: {pkg} (modules import as `from {pkg} import <module_name>`)\n\n{analysis_ctx}",
         filename="tests/test_smoke.py",
     )
     return files, analysis, modules
@@ -390,7 +509,8 @@ def build_agents_md(project: ScaffoldProject, vault: Path | None) -> str:
         "## Ground rules",
         "",
         f"- Do not modify `train.py`, `evaluate.py`, `src/{pkg}/tracking.py`,",
-        "  or `tests/test_smoke.py` — implement the stubs to fit the harness, not the reverse.",
+        f"  `src/{pkg}/_config.py`, or `tests/test_smoke.py` — implement the stubs to fit the harness,",
+        "  not the reverse.",
         "- Hyperparameters in `configs/base.yaml` are the paper's real values; do not change them.",
         "  `configs/smoke.yaml` is a toy run and must stay tiny.",
         "- Log every run through `tracking.log_run()` (the harness already does).",
@@ -438,6 +558,7 @@ def build_scaffold(paper: Paper, backend: Backend, max_chars: int,
     files["configs/base.yaml"] = str(harness["base_yaml"])
     files["configs/smoke.yaml"] = str(harness["smoke_yaml"])
     files["experiments/exp001_smoke/README.md"] = str(harness["smoke_readme"])
+    _verify_configs_load(files)
 
     progress("Stage 5/5: writing README and EXPERIMENTS...")
     docs = _stage_json(
@@ -448,10 +569,13 @@ def build_scaffold(paper: Paper, backend: Backend, max_chars: int,
     files["README.md"] = str(docs["readme"])
     files["EXPERIMENTS.md"] = str(docs["experiments_md"])
 
+    _rewrite_bare_imports(files, pkg)
+
     project = ScaffoldProject(
         arxiv_id=paper.arxiv_id, title=paper.title, url=paper.url,
         package=pkg, model=backend.model, files=files,
         analysis=analysis, modules=modules,
+        dependencies=_project_dependencies(files, pkg),
     )
     project.files["AGENTS.md"] = build_agents_md(project, vault)
     return project
@@ -492,8 +616,12 @@ def write_project(project: ScaffoldProject, folder: Path, force: bool,
         pkg_dir.mkdir(parents=True)
         (pkg_dir / "__init__.py").write_text("")
         (pkg_dir / "tracking.py").write_text(templates.TRACKING_PY)
+        (pkg_dir / "_config.py").write_text(templates.CONFIG_PY)
         (folder / ".gitignore").write_text(templates.GITIGNORE)
-        (folder / "pyproject.toml").write_text(templates.PYPROJECT.format(name=project.package))
+        deps = ", ".join(f'"{d}"' for d in project.dependencies)
+        (folder / "pyproject.toml").write_text(
+            templates.PYPROJECT.format(name=project.package, dependencies=deps)
+        )
         for rel, content in project.files.items():
             path = folder / rel
             path.parent.mkdir(parents=True, exist_ok=True)
