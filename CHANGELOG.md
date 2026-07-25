@@ -32,6 +32,11 @@
   verifies the tag matches `pyproject.toml`, and attaches the wheel and sdist
   to a GitHub Release.
 
+### Changed
+- Default `max_tokens` raised from 8192 to 16384 so mid-size local models
+  (e.g. a 9B) don't truncate long generated code files; still overridable
+  per run with `--max-tokens` or the config key.
+
 ### Fixed
 - `__version__` is now derived from package metadata instead of a hard-coded
   string that had drifted behind `pyproject.toml`.
