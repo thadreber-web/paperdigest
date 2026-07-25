@@ -1,8 +1,34 @@
 # paperdigest
 
-Turn an AI/ML arXiv paper into a folder of plain-English, wikilinked Obsidian
-notes: concept-by-concept explainers, Mermaid diagrams, equations walked through
-line by line, and a vault-wide jargon glossary.
+Read any AI/ML arXiv paper without having every piece of jargon memorized.
+paperdigest turns a paper into a folder of plain-English, wikilinked Obsidian
+notes — concept-by-concept explainers, Mermaid diagrams, equations walked
+through line by line, and a vault-wide glossary that defines the terms as you
+hit them.
+
+<p align="center">
+  <img src="docs/images/concept-note.png" alt="A generated concept note open in Obsidian, showing a plain-English analogy, an auto-generated Mermaid flowchart, and the paper's equation" width="620">
+</p>
+<p align="center">
+  <em>One generated note in Obsidian: a plain-English analogy for the concept, an
+  auto-generated Mermaid diagram of the computation, and the paper's equation
+  walked through line by line. Everything below is produced from the arXiv source
+  — no hand-editing.</em>
+</p>
+
+Built for the reader who follows AI/ML advances but isn't a specialist in every
+subfield: instead of bouncing between the PDF and ten browser tabs, you get the
+paper's ideas explained in your own vault, each unfamiliar term a click away.
+
+## See a full example
+
+[`examples/9b-attention-is-all-you-need/`](examples/9b-attention-is-all-you-need)
+is a complete run on *Attention Is All You Need*, checked into the repo — the
+generated Obsidian [vault](examples/9b-attention-is-all-you-need/vault) (concept
+notes + glossary), a
+[scaffolded project](examples/9b-attention-is-all-you-need/scaffold-project), and
+the [run logs](examples/9b-attention-is-all-you-need/logs). It was produced
+entirely by a local 9B model — no cloud, no API key.
 
 **Local-first.** By default paperdigest talks to a local OpenAI-compatible
 server (llama.cpp, Ollama, vLLM) on your own machine — no API key, no cost.
@@ -28,6 +54,16 @@ Non-default port or engine? Point at it:
   --base-url http://localhost:11434/v1 --model llama3.1
 ```
 
+Output lands in `<vault>/Papers/<year>-<title-slug>/` plus new term notes in
+`<vault>/Glossary/`. Re-running the same paper refuses to overwrite unless you
+pass `--force`. Glossary term notes are never overwritten. Pass `--quiet` to
+suppress progress output, or `--max-input-chars`/`--max-tokens`/`--cache-dir`
+to override those config keys per run (both `digest` and `scaffold` accept
+these). `paperdigest --version` prints the installed version — it is a
+top-level flag, not available on the subcommands.
+
+### Choosing a model & context window
+
 Use a capable instruct model (~7B+); the pipeline needs structured JSON
 output, and very small models fail cleanly with an `error:` message. Set
 `max_input_chars` in `config.toml` to fit your model's context window (e.g.
@@ -38,13 +74,25 @@ output cap, so if a run aborts with a `truncated at max_tokens` error, raise
 it (e.g. `--max-tokens 32768` — see `docs/smoke-test-crosslinks.md` for a
 live example on a 122B).
 
-Output lands in `<vault>/Papers/<year>-<title-slug>/` plus new term notes in
-`<vault>/Glossary/`. Re-running the same paper refuses to overwrite unless you
-pass `--force`. Glossary term notes are never overwritten. Pass `--quiet` to
-suppress progress output, or `--max-input-chars`/`--max-tokens`/`--cache-dir`
-to override those config keys per run (both `digest` and `scaffold` accept
-these). `paperdigest --version` prints the installed version — it is a
-top-level flag, not available on the subcommands.
+## How it works
+
+```mermaid
+flowchart TD
+    A["arXiv paper<br>(HTML, fetched &amp; cached)"] --> B["parse into<br>sections + figures"]
+    B --> C["outline (LLM):<br>concepts, jargon, TL;DR"]
+    C --> D["per-concept note (LLM):<br>plain-English + equation walk-through<br>+ embedded Mermaid / ASCII diagram"]
+    B --> E["figures explained<br>by a vision model"]
+    C --> F["glossary (LLM):<br>define jargon not already in your vault"]
+    D --> G["Obsidian vault:<br>Papers/ + Glossary/"]
+    E --> G
+    F --> G
+```
+
+The outline and glossary stages ask the server for JSON (`response_format:
+json_object`) when it's supported — that's what makes small local models
+reliable here. Each concept's diagram is generated as part of its note, then
+sanitized deterministically before it's written; figures are embedded next to
+the concept they illustrate.
 
 ### Diagrams: Mermaid or ASCII
 
