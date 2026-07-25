@@ -90,19 +90,23 @@ from pathlib import Path
 
 
 def load_config(path):
-    """Read a flat `key: value` config file into a dict of typed values.
+    """Read a flat config file into a dict of typed values.
 
-    One `key: value` per line; blank lines and `#` comments are ignored. Values
-    are read with Python literal rules (int, float including `1e-9`, list, quoted
-    string) plus lowercase `true`/`false`; anything else stays a bare string.
+    One entry per line as `key: value` (YAML) or `key = value` (.env/.ini); the first
+    `:` or `=` on the line separates key from value. Blank lines and `#` comments are
+    ignored. Values are read with Python literal rules (int, float including `1e-9`,
+    list, quoted string) plus lowercase `true`/`false`; anything else stays a string.
     """
     config = {}
     for raw in Path(path).read_text().splitlines():
         line = raw.split("#", 1)[0].strip()
-        if not line or ":" not in line:
+        if not line:
             continue
-        key, val = line.split(":", 1)
-        key, val = key.strip(), val.strip()
+        seps = [i for i in (line.find(":"), line.find("=")) if i != -1]
+        if not seps:
+            continue
+        i = min(seps)
+        key, val = line[:i].strip(), line[i + 1:].strip()
         low = val.lower()
         if low in ("true", "false"):
             config[key] = low == "true"

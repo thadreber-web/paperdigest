@@ -40,6 +40,18 @@ def test_config_loader_parses_typed_values(tmp_path):
     assert not any(k.startswith("#") for k in cfg)
 
 
+def test_config_loader_accepts_equals_separator(tmp_path):
+    # The 9B sometimes emits `.env`-style `key = value` instead of YAML `key: value`.
+    ns = {}
+    exec(templates.CONFIG_PY, ns)
+    cfg_file = tmp_path / "base.yaml"
+    cfg_file.write_text("N=6\nd_model = 512\nepsilon=1e-9\n")
+    cfg = ns["load_config"](str(cfg_file))
+    assert cfg["N"] == 6
+    assert cfg["d_model"] == 512
+    assert cfg["epsilon"] == 1e-9 and isinstance(cfg["epsilon"], float)
+
+
 def test_tracking_log_run_round_trips(tmp_path):
     pkg = tmp_path / "src" / "demo"
     pkg.mkdir(parents=True)

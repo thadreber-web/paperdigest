@@ -312,7 +312,7 @@ def _verify_configs_load(files: dict[str, str]) -> None:
             raise ScaffoldError(
                 "harness",
                 f"{rel} did not parse into any key/value pairs via the project's config loader "
-                "(the harness must emit flat `key: value` lines)",
+                "(the harness must emit flat `key: value` or `key = value` lines)",
                 raw=content,
             )
 
