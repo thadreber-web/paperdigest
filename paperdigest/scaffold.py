@@ -46,9 +46,13 @@ Respond with ONLY valid JSON (no markdown fences, no commentary) in exactly this
 {"components": [{"name": "<method component>", "description": "<1-2 sentences>", "section": "<paper section heading>"}],
  "datasets": ["<dataset name>", ...],
  "hyperparameters": {"<name>": "<value as stated in the paper>"},
- "experiments": [{"name": "<short name>", "description": "<what it measures and which table/figure it reproduces>"}]}
+ "experiments": [{"name": "<short name>", "description": "<what it measures and which table/figure it reproduces>"}],
+ "results": [{"metric": "<what is measured, e.g. 'BLEU EN-DE'>", "value": "<exact value as the paper states it>", "source": "<table/section, e.g. 'Table 2'>"}]}
 Rules: pick 3-8 method components. List every dataset the paper uses.
-Include only hyperparameters the paper actually states."""
+Include only hyperparameters the paper actually states.
+For results, copy only metrics the paper explicitly reports — value verbatim, with its table/section, and
+be careful to keep each number attached to the exact task/dataset the paper reports it for. Use an empty
+list if the paper reports none. Never invent, approximate, or relabel a number."""
 
 _PLAN_SYSTEM = """\
 You plan the module layout of a Python project that will reimplement a research paper's method.
@@ -113,7 +117,10 @@ Rules:
 - readme: paper title + arXiv link, 3-5 sentence method summary, a repo map explaining every
   top-level file/folder, setup instructions (pip install -e '.[dev]'), and how to run the smoke experiment.
 - experiments_md: one section per planned experiment mirroring the paper's tables/figures, each with
-  a `- [ ]` status checkbox, which config to use, and the paper's reported numbers to compare against."""
+  a `- [ ]` status checkbox and which config to use. For target numbers, use ONLY the values in the
+  analysis `results` list — quote the metric and its source table exactly as given. If a planned
+  experiment has no matching `results` entry, point the reader to the paper's table/section to look the
+  number up instead of stating one. Never invent, guess, approximate, or relabel a metric value."""
 
 
 def _default_progress(msg: str) -> None:
