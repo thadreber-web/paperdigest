@@ -280,6 +280,22 @@ Then:
 
 This is the smallest architectural move that turns paperdigest from a prose generator into trustworthy research infrastructure.
 
+## Deferred direction recorded 2026-08-20: Paperdigest Quality Lab
+
+This direction was proposed as a substantial future portfolio and product project. Thad likes the idea but explicitly chose not to pursue it on 2026-08-20. It is deferred, not rejected and not active work.
+
+The proposed `paperdigest` v0.5.0-scale effort would add a source-grounded quality evaluation system around the existing product:
+
+- a fixed corpus of real AI/ML papers and source-anchored evaluation cases;
+- deterministic checks for broken links, invalid diagrams, missing sections, equation preservation, and source attribution;
+- source-grounded assessment of unsupported claims, concept coverage, and explanation faithfulness;
+- human review for uncertain findings;
+- reproducible local-model comparisons using fixed configurations and repeated runs;
+- an HTML report showing quality by paper, model, metric, and failure, with evidence drill-down;
+- regression gates that prevent later releases from quietly reducing output quality.
+
+The value is not another summary mode. It would turn an existing local-AI application into a measured product with an inspectable quality contract, documented failure modes, and release evidence. Revisit only when Thad deliberately selects it; do not treat this note as authorization to plan, implement, or run it.
+
 ## Audit safety and verification notes
 
 - The audit itself was read-only.
