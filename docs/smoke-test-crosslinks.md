@@ -1,6 +1,6 @@
 # Live smoke test — AGENTS.md + digest/scaffold cross-links — 2026-07-17
 
-**Host:** `a DGX Spark workstation` (a DGX Spark workstation). **Server:** local vLLM on
+**Host:** `spark-8802` (a DGX Spark workstation). **Server:** local vLLM on
 `http://localhost:8000/v1` serving model id `qwen`
 (root `bleysg/Qwen3.5-122B-A10B-int4-fp8-hybrid`, max_model_len 131072). No hosted
 API keys were used. Branch under test: `agents-brief-crosslinks`.
@@ -34,7 +34,7 @@ cause: LLM call failed: OpenAI-compatible response truncated at max_tokens
 The default `max_tokens` is 8192 and this model spends completion tokens on
 thinking, so the visible output was truncated before the stub completed. The
 debug dump at
-`~/.cache/paperdigest/scaffold-debug-1706.03762-module-layers.py.txt`
+`/home/user/.cache/paperdigest/scaffold-debug-1706.03762-module-layers.py.txt`
 contained "(no raw model output captured)".
 
 ## Run 2 — digest with the project NOT on disk (SUCCESS)

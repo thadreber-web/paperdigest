@@ -4,6 +4,28 @@ Minor cleanups deferred from review (2026-07-17, AGENTS.md + cross-links effort)
 All were triaged "safe to ride" by the final whole-branch review — none carry
 correctness or safety risk. Pick up opportunistically.
 
+## Known bugs (deferred, real correctness impact)
+
+- [x] **Generated files sometimes import sibling/infra modules by bare name** —
+  Fixed 2026-07-24: deterministic import rewriter.
+  observed on a live 9B scaffold run (2026-07-24, arXiv:1706.03762). The model wrote
+  `tests/test_smoke.py` with `from attention import ...`, `from model import ...`,
+  `from tracking import ...` instead of `from attention_is_all_you_need import attention`
+  etc. Bare names don't resolve once the project is pip-installed as its package, so the
+  generated smoke test fails to import (and cross-module stub imports can fail the same
+  way). It is **intermittent** — other runs emit the correct `from <pkg> import <module>`
+  form and pass. This does *not* affect the scaffold's core purpose (stubs, section
+  citations, hyperparameters, and AGENTS.md brief are all correct and agent-ready); an
+  implementing agent fixes the import in seconds. It is a paperdigest robustness gap:
+  the model improvises import style the same way it improvised config separators and
+  mermaid labels.
+  **Planned fix:** deterministically rewrite bare sibling/infra imports in generated
+  files to the full package path (`from <pkg>.<module> import ...`), same approach as the
+  mermaid label sanitizer and the tolerant config loader. The dependency scanner already
+  ignores these names (fixed 2026-07-24), so pyproject stays correct; only the emitted
+  import statements still need rewriting. Until then, the generated project is a correct
+  spec but its own smoke test may not import as-shipped.
+
 ## Open
 
 - [ ] **`config.py`: `project_dir` field line is exactly 120 chars** — zero margin
