@@ -15,6 +15,12 @@
 - README quick start leads with the packaged install; source-install
   instructions moved below it.
 
+### Fixed
+- `__version__` now resolves package metadata under the `arxivdigest`
+  distribution name (with `paperdigest` as fallback for stale dev environments);
+  previously it looked only for the old name and reported `0.0.0` on clean
+  installs, which failed the release test gate.
+
 ## 0.4.0 — 2026-07-25
 
 ### Added
