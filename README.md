@@ -39,8 +39,11 @@ Cloud backends (Anthropic, OpenAI) are opt-in for those who want them.
 Install the CLI (Python 3.11+; `pipx` keeps it in an isolated environment):
 
 ```bash
-pipx install paperdigest      # or: pip install paperdigest
+pipx install arxivdigest      # or: pip install arxivdigest
 ```
+
+(The PyPI package is named `arxivdigest`; the command you run is
+`paperdigest`, unchanged.)
 
 Have a llama.cpp server running (`llama-server -m model.gguf` serves
 `http://localhost:8080/v1` by default), then:

@@ -3,8 +3,11 @@
 ## 0.4.1 — 2026-10-13
 
 ### Added
-- Published to PyPI: `pipx install paperdigest` (or `pip install paperdigest`)
-  now installs the CLI without cloning the repo.
+- Published to PyPI as **`arxivdigest`**: `pipx install arxivdigest` (or
+  `pip install arxivdigest`) installs the CLI without cloning the repo.
+  The `paperdigest` distribution name was unavailable — PyPI's name-similarity
+  guard reserves it for an unrelated, dormant `paper-digest` project.
+  The command remains `paperdigest`.
 - The release workflow publishes to PyPI via GitHub **trusted publishing**
   (OIDC) — no API tokens or passwords are stored on any machine.
 
