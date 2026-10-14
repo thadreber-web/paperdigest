@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 — 2026-10-13
+
+### Added
+- Published to PyPI: `pipx install paperdigest` (or `pip install paperdigest`)
+  now installs the CLI without cloning the repo.
+- The release workflow publishes to PyPI via GitHub **trusted publishing**
+  (OIDC) — no API tokens or passwords are stored on any machine.
+
+### Changed
+- README quick start leads with the packaged install; source-install
+  instructions moved below it.
+
 ## 0.4.0 — 2026-07-25
 
 ### Added

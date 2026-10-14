@@ -36,13 +36,21 @@ Cloud backends (Anthropic, OpenAI) are opt-in for those who want them.
 
 ## Quick start (local, free)
 
+Install the CLI (Python 3.11+; `pipx` keeps it in an isolated environment):
+
+```bash
+pipx install paperdigest      # or: pip install paperdigest
+```
+
 Have a llama.cpp server running (`llama-server -m model.gguf` serves
 `http://localhost:8080/v1` by default), then:
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e .
-.venv/bin/paperdigest https://arxiv.org/abs/1706.03762 --vault ~/ObsidianVault
+paperdigest https://arxiv.org/abs/1706.03762 --vault ~/ObsidianVault
 ```
+
+Installing from a clone instead? `python3 -m venv .venv && .venv/bin/pip
+install -e .`, then use `.venv/bin/paperdigest …` for every command below.
 
 Non-default port or engine? Point at it:
 
